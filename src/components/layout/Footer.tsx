@@ -1,52 +1,105 @@
 import Link from "next/link";
+import { getSiteSettings } from "@/lib/d1";
 
-export default function Footer() {
+const EXPLORE = [
+  { href: "/about", label: "About" },
+  { href: "/services", label: "Sessions" },
+  { href: "/packages", label: "Packages" },
+  { href: "/blog", label: "Blog" },
+];
+
+/** Reads site settings so the Instagram URL, email and footer text are CMS-driven. */
+export default async function Footer() {
+  let websiteName = "Dukh Dealer";
+  let tagline =
+    "A private space to be heard. Chat, voice, or mystery video — real listening, no labels.";
+  let email = "hello@dukhdealer.com";
+  let instagramUrl = "";
+  let instagramEnabled = false;
+  let footerText = "© 2026 Dukh Dealer. A private conversation service.";
+  let socialLinks: { platform: string; url: string }[] = [];
+
+  try {
+    const site = await getSiteSettings();
+    websiteName = site.websiteName || websiteName;
+    tagline = site.description || site.tagline || tagline;
+    email = site.email || email;
+    instagramUrl = site.instagramUrl || "";
+    instagramEnabled = site.instagramEnabled && !!site.instagramUrl;
+    footerText = site.footerText || footerText;
+    socialLinks = (site.socialLinks || []).filter(
+      (s) => s.url && s.platform?.toLowerCase() !== "instagram"
+    );
+  } catch {
+    // Keep static defaults if D1 is unreachable.
+  }
+
   return (
     <footer className="border-t border-[var(--color-border)] bg-[var(--color-primary)]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           <div>
-            <h3 className="text-lg font-semibold text-[var(--color-accent)] mb-3">
-              Dukh Dealer
-            </h3>
-            <p className="text-sm text-[var(--color-muted)] leading-relaxed">
-              A private space to be heard. Chat, voice, or mystery video — real listening, no labels.
-            </p>
+            <h3 className="mb-3 text-lg font-semibold text-[var(--color-accent)]">{websiteName}</h3>
+            <p className="text-sm leading-relaxed text-white/70">{tagline}</p>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-[var(--color-foreground)] mb-3">Explore</h4>
-            <ul className="space-y-2 text-sm text-[var(--color-muted)]">
-              <li><Link href="/about" className="hover:text-[var(--color-accent)]">About</Link></li>
-              <li><Link href="/services" className="hover:text-[var(--color-accent)]">Sessions</Link></li>
-              <li><Link href="/packages" className="hover:text-[var(--color-accent)]">Packages</Link></li>
-              <li><Link href="/blog" className="hover:text-[var(--color-accent)]">Blog</Link></li>
+            <h4 className="mb-3 text-sm font-medium text-white">Explore</h4>
+            <ul className="space-y-1 text-sm text-white/70">
+              {EXPLORE.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="flex min-h-9 items-center hover:text-[var(--color-accent)]"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-[var(--color-foreground)] mb-3">Connect</h4>
-            <ul className="space-y-2 text-sm text-[var(--color-muted)]">
+            <h4 className="mb-3 text-sm font-medium text-white">Connect</h4>
+            <ul className="space-y-1 text-sm text-white/70">
+              {instagramEnabled && (
+                <li>
+                  <a
+                    href={instagramUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-9 items-center hover:text-[var(--color-accent)]"
+                  >
+                    Instagram
+                  </a>
+                </li>
+              )}
+              {socialLinks.map((s) => (
+                <li key={s.url}>
+                  <a
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-9 items-center hover:text-[var(--color-accent)]"
+                  >
+                    {s.platform}
+                  </a>
+                </li>
+              ))}
               <li>
                 <a
-                  href="https://instagram.com/dukhdealer"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-[var(--color-accent)]"
+                  href={`mailto:${email}`}
+                  className="flex min-h-9 items-center break-anywhere hover:text-[var(--color-accent)]"
                 >
-                  Instagram
-                </a>
-              </li>
-              <li>
-                <a href="mailto:hello@dukhdealer.com" className="hover:text-[var(--color-accent)]">
-                  hello@dukhdealer.com
+                  {email}
                 </a>
               </li>
             </ul>
           </div>
         </div>
-        <div className="mt-10 pt-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-muted)]">
-          <p>© 2026 Dukh Dealer. A private conversation service.</p>
+        <div className="mt-10 border-t border-white/15 pt-6 text-center text-xs text-white/60">
+          <p className="break-anywhere">{footerText}</p>
           <p className="mt-1">
-            Not therapy, psychotherapy, psychiatric treatment, medical treatment, diagnosis, or an emergency service.
+            Not therapy, psychotherapy, psychiatric treatment, medical treatment, diagnosis, or an
+            emergency service.
           </p>
         </div>
       </div>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Button from "@/components/ui/Button";
+import AdminButton from "@/components/admin/AdminButton";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -36,48 +36,50 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--admin-bg)] px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-[var(--color-accent)]">Dukh Admin</h1>
-          <p className="text-sm text-[var(--color-muted)] mt-1">Sign in to manage the site</p>
+          <h1 className="text-2xl font-semibold text-[var(--admin-primary-bg)]">Dukh Admin</h1>
+          <p className="mt-1 text-sm text-[var(--admin-text-muted)]">Sign in to manage the site</p>
         </div>
         <form
           onSubmit={submit}
-          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 space-y-4"
+          className="admin-card space-y-4 p-6"
         >
           {error && (
-            <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+            <div role="alert" className="rounded-lg border border-[#F0C9C8] bg-[#FBEAEA] px-3 py-2 text-sm text-[#9A2F2C]">
               {error}
             </div>
           )}
           <div>
-            <label className="text-xs text-[var(--color-muted)]">Email</label>
+            <label htmlFor="admin-email" className="text-xs font-medium text-[var(--admin-text-muted)]">Email</label>
             <input
+              id="admin-email"
               type="email"
               required
               autoComplete="username"
-              className="w-full mt-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+              className="mt-1"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
           <div>
-            <label className="text-xs text-[var(--color-muted)]">Password</label>
+            <label htmlFor="admin-password" className="text-xs font-medium text-[var(--admin-text-muted)]">Password</label>
             <input
+              id="admin-password"
               type="password"
               required
               autoComplete="current-password"
-              className="w-full mt-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
+              className="mt-1"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <AdminButton type="submit" block loading={loading}>
             {loading ? "Signing in…" : "Sign in"}
-          </Button>
+          </AdminButton>
         </form>
-        <p className="text-xs text-[var(--color-muted)] text-center mt-4">
+        <p className="mt-4 text-center text-xs text-[var(--admin-text-muted)]">
           No account yet? Run the one-time setup — see README.md &quot;First deploy&quot;.
         </p>
       </div>

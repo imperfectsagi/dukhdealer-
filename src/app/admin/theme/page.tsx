@@ -2,20 +2,25 @@
 
 import { useRequireAdmin } from "@/lib/use-require-admin";
 import { useEffect, useState } from "react";
-import Button from "@/components/ui/Button";
+import AdminButton from "@/components/admin/AdminButton";
+import { AdminCard, AdminPageHeader, Notice } from "@/components/admin/AdminUI";
 import type { ThemeSettings } from "@/types";
 
+/**
+ * The current saved brand theme. "Reset to default" restores these values, and
+ * they match migrations/0002_seed.sql and the :root fallbacks in globals.css.
+ */
 const defaults: ThemeSettings = {
-  primary: "#1a1a2e",
-  secondary: "#16213e",
-  background: "#0f0f1a",
-  foreground: "#e8e6e3",
-  accent: "#c9a227",
-  card: "#1a1a2e",
-  border: "#2a2a3e",
-  muted: "#6b6b80",
-  cta: "#c9a227",
-  ctaText: "#0f0f1a",
+  primary: "#5B2A5F",
+  secondary: "#431F46",
+  background: "#FFF8F2",
+  foreground: "#29212B",
+  accent: "#F4A261",
+  card: "#FFFFFF",
+  border: "#E8DDE4",
+  muted: "#756B76",
+  cta: "#E76F35",
+  ctaText: "#FFFFFF",
 };
 
 const labels: Record<keyof ThemeSettings, string> = {
@@ -35,6 +40,7 @@ export default function AdminThemePage() {
   const authChecked = useRequireAdmin();
   const [theme, setTheme] = useState<ThemeSettings>(defaults);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/theme")
@@ -61,13 +67,18 @@ export default function AdminThemePage() {
   }, [theme]);
 
   const save = async () => {
-    await fetch("/api/admin/theme", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(theme),
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setSaving(true);
+    try {
+      await fetch("/api/admin/theme", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(theme),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const reset = () => {
@@ -79,18 +90,20 @@ export default function AdminThemePage() {
   if (!authChecked) return null;
   return (
     <div className="max-w-2xl space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-semibold">Theme Manager</h1>
-      <p className="text-sm text-[var(--color-muted)]">
-        Colors use CSS variables and apply live across the site once saved.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <AdminPageHeader
+        title="Theme"
+        description="Colours apply across the public site as soon as you save. Admin Panel colours are fixed and stay readable whatever you choose here."
+      />
+
+      {saved && <Notice tone="success">Theme saved</Notice>}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {(Object.keys(labels) as (keyof ThemeSettings)[]).map((key) => (
           <div key={key} className="flex items-center gap-3">
             <input
               type="color"
               value={theme[key]}
               onChange={(e) => setTheme({ ...theme, [key]: e.target.value })}
-              className="w-10 h-10 rounded cursor-pointer border border-[var(--color-border)]"
+              className="cursor-pointer"
             />
             <div className="flex-1">
               <p className="text-sm">{labels[key]}</p>
@@ -98,19 +111,19 @@ export default function AdminThemePage() {
                 type="text"
                 value={theme[key]}
                 onChange={(e) => setTheme({ ...theme, [key]: e.target.value })}
-                className="w-full mt-0.5 rounded border border-[var(--color-border)] bg-[var(--color-background)] px-2 py-1 text-xs font-mono"
+                className="mt-0.5 font-mono"
               />
             </div>
           </div>
         ))}
       </div>
-      <div className="flex gap-3">
-        <Button onClick={save}>{saved ? "Saved" : "Save theme"}</Button>
-        <Button variant="outline" onClick={reset}>Reset to default</Button>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <AdminButton loading={saving} onClick={save}>Save theme</AdminButton>
+        <AdminButton variant="secondary" onClick={reset}>Reset to default</AdminButton>
       </div>
-      <div className="rounded-xl border border-[var(--color-border)] p-6 bg-[var(--color-card)]">
-        <p className="text-sm mb-3">Live preview</p>
-        <div className="flex gap-3">
+      <div className="rounded-xl border border-[var(--admin-border)] bg-[var(--color-card)] p-4 sm:p-6">
+        <p className="mb-3 text-sm text-[var(--color-foreground)]">Live preview of the public site</p>
+        <div className="flex flex-wrap gap-3">
           <button className="px-4 py-2 rounded-lg bg-[var(--color-cta)] text-[var(--color-cta-text)] text-sm font-medium">
             CTA Button
           </button>

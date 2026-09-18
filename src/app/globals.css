@@ -1,17 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  /* Semantic theme tokens - controlled by Theme Manager */
-  --color-primary: #1a1a2e;
-  --color-secondary: #16213e;
-  --color-background: #0f0f1a;
-  --color-foreground: #e8e6e3;
-  --color-accent: #c9a227;
-  --color-card: #1a1a2e;
-  --color-border: #2a2a3e;
-  --color-muted: #6b6b80;
-  --color-cta: #c9a227;
-  --color-cta-text: #0f0f1a;
+  /* ----------------------------------------------------------------
+     Public site theme tokens - controlled by Admin > Theme Manager.
+     These are the CURRENT SAVED BRAND THEME and are also what
+     migrations/0002_seed.sql writes into theme_settings, so a fresh
+     database and a first paint before D1 responds look identical.
+     ---------------------------------------------------------------- */
+  --color-primary: #5B2A5F;
+  --color-secondary: #431F46;
+  --color-background: #FFF8F2;
+  --color-foreground: #29212B;
+  --color-accent: #F4A261;
+  --color-card: #FFFFFF;
+  --color-border: #E8DDE4;
+  --color-muted: #756B76;
+  --color-cta: #E76F35;
+  --color-cta-text: #FFFFFF;
+
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
@@ -19,6 +25,57 @@
 
   --radius: 0.75rem;
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+
+  /* ----------------------------------------------------------------
+     Admin panel tokens.
+
+     Deliberately NOT derived from the public theme. Admin action buttons
+     used to inherit the public palette, so the CTA orange landed under
+     white text and destructive actions were hard to read. These are
+     fixed, contrast-checked values, so changing the public theme can
+     never make the admin unreadable.
+     ---------------------------------------------------------------- */
+  --admin-bg: #FAF7F9;
+  --admin-surface: #FFFFFF;
+  --admin-surface-2: #F6F1F5;
+  --admin-text: #29212B;
+  --admin-text-muted: #6B6270;
+  --admin-border: #E8DDE4;
+  --admin-border-strong: #D8C5D7;
+
+  /* Primary action: Save / Create / Upload / Publish */
+  --admin-primary-bg: #5B2A5F;
+  --admin-primary-text: #FFFFFF;
+  --admin-primary-bg-hover: #431F46;
+
+  /* Secondary action: Edit / Cancel */
+  --admin-secondary-bg: #FFFFFF;
+  --admin-secondary-text: #5B2A5F;
+  --admin-secondary-border: #E8DDE4;
+  --admin-secondary-bg-hover: #F1E6F0;
+  --admin-secondary-text-hover: #431F46;
+
+  /* Activate */
+  --admin-activate-bg: #EAF5EF;
+  --admin-activate-text: #28704A;
+  --admin-activate-border: #C8E3D3;
+  --admin-activate-bg-hover: #DDF0E5;
+  --admin-activate-text-hover: #215B3C;
+
+  /* Deactivate */
+  --admin-deactivate-bg: #F1E6F0;
+  --admin-deactivate-text: #5B2A5F;
+  --admin-deactivate-border: #D8C5D7;
+  --admin-deactivate-bg-hover: #E6D5E5;
+  --admin-deactivate-text-hover: #431F46;
+
+  /* Destructive */
+  --admin-destructive-bg: #D9534F;
+  --admin-destructive-text: #FFFFFF;
+  --admin-destructive-bg-hover: #C94440;
+
+  /* Minimum comfortable touch target on mobile */
+  --touch-target: 44px;
 }
 
 @theme inline {
@@ -46,6 +103,8 @@
 
 html {
   scroll-behavior: smooth;
+  /* Stops iOS Safari re-scaling admin text in landscape. */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -55,6 +114,8 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Nothing should be able to scroll the page sideways on a 320px phone. */
+  overflow-x: hidden;
 }
 
 /* Utility classes using semantic tokens */
@@ -76,9 +137,82 @@ body {
 .border-border { border-color: var(--color-border); }
 .border-accent { border-color: var(--color-accent); }
 
+/* ------------------------------------------------------------------
+   Admin shell
+   ------------------------------------------------------------------ */
+.admin-scope {
+  background: var(--admin-bg);
+  color: var(--admin-text);
+}
+
+.admin-card {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius);
+}
+
+/* Admin inputs: 16px font on small screens, otherwise iOS zooms the whole
+   page in on focus and the admin has to pinch back out after every field. */
+.admin-input,
+.admin-scope input:not([type="color"]):not([type="checkbox"]):not([type="radio"]),
+.admin-scope select,
+.admin-scope textarea {
+  width: 100%;
+  min-height: var(--touch-target);
+  font-size: 16px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  border: 1px solid var(--admin-border);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.admin-scope textarea {
+  min-height: 6rem;
+  line-height: 1.5;
+}
+
+.admin-scope input:focus-visible,
+.admin-scope select:focus-visible,
+.admin-scope textarea:focus-visible {
+  outline: 2px solid var(--admin-primary-bg);
+  outline-offset: 1px;
+  border-color: var(--admin-primary-bg);
+}
+
+@media (min-width: 640px) {
+  .admin-scope input:not([type="color"]):not([type="checkbox"]):not([type="radio"]),
+  .admin-scope select,
+  .admin-scope textarea {
+    font-size: 0.875rem;
+  }
+}
+
+/* Colour swatch inputs stay tappable on mobile. */
+.admin-scope input[type="color"] {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  padding: 2px;
+  border: 1px solid var(--admin-border);
+  border-radius: 0.5rem;
+  background: var(--admin-surface);
+}
+
+/* Long booking IDs, URLs and R2 keys must wrap rather than widen the layout. */
+.break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Only genuinely wide content scrolls, and only inside its own container. */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Focus styles */
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
@@ -107,9 +241,25 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
 .animate-fade-in {
   animation: fadeIn 0.4s ease-out forwards;
 }
 .animate-pulse-soft {
   animation: pulse-soft 2s ease-in-out infinite;
+}
+.animate-slide-in-left {
+  animation: slideInLeft 0.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-pulse-soft,
+  .animate-slide-in-left {
+    animation: none;
+  }
+  html { scroll-behavior: auto; }
 }

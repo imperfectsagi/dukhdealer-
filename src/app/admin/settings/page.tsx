@@ -2,7 +2,8 @@
 
 import { useRequireAdmin } from "@/lib/use-require-admin";
 import { useEffect, useState } from "react";
-import Button from "@/components/ui/Button";
+import Link from "next/link";
+import AdminButton from "@/components/admin/AdminButton";
 import type { SiteSettings, SEOSettings, LogoSettings, PaymentQR } from "@/types";
 
 type SettingsBundle = {
@@ -12,7 +13,7 @@ type SettingsBundle = {
   paymentQR: PaymentQR;
 };
 
-const TABS = ["Site", "SEO", "Logo", "Payment QR"] as const;
+const TABS = ["Site", "SEO"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function AdminSettingsPage() {
@@ -46,7 +47,7 @@ export default function AdminSettingsPage() {
     }
   };
 
-  if (!data) return <p className="text-[var(--color-muted)]">Loading…</p>;
+  if (!data) return <p className="text-[var(--admin-text-muted)]">Loading…</p>;
 
 
   if (!authChecked) return null;
@@ -54,18 +55,18 @@ export default function AdminSettingsPage() {
     <div className="animate-fade-in space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Settings</h1>
-        {saved && <span className="text-sm text-green-400">Saved</span>}
+        {saved && <span className="text-sm text-[var(--admin-activate-text)]">Saved</span>}
       </div>
 
-      <div className="flex gap-2 border-b border-[var(--color-border)]">
+      <div className="flex gap-2 border-b border-[var(--admin-border)]">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`px-3 py-2 text-sm border-b-2 -mb-px ${
               tab === t
-                ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-                : "border-transparent text-[var(--color-muted)]"
+                ? "border-[var(--admin-primary-bg)] text-[var(--admin-primary-bg)]"
+                : "border-transparent text-[var(--admin-text-muted)]"
             }`}
           >
             {t}
@@ -80,8 +81,13 @@ export default function AdminSettingsPage() {
           <Field label="Description" textarea value={data.site.description} onChange={(v) => setData({ ...data, site: { ...data.site, description: v } })} />
           <Field label="Contact email" value={data.site.email} onChange={(v) => setData({ ...data, site: { ...data.site, email: v } })} />
           <Field label="Instagram URL" value={data.site.instagramUrl} onChange={(v) => setData({ ...data, site: { ...data.site, instagramUrl: v } })} />
+          <Field
+            label="Booking timezone (IANA, e.g. Asia/Kolkata)"
+            value={data.site.timezone}
+            onChange={(v) => setData({ ...data, site: { ...data.site, timezone: v } })}
+          />
           <Field label="Footer text" textarea value={data.site.footerText} onChange={(v) => setData({ ...data, site: { ...data.site, footerText: v } })} />
-          <Button size="sm" disabled={saving} onClick={() => save({ site: data.site })}>Save site settings</Button>
+          <AdminButton size="sm" disabled={saving} onClick={() => save({ site: data.site })}>Save site settings</AdminButton>
         </div>
       )}
 
@@ -91,41 +97,26 @@ export default function AdminSettingsPage() {
           <Field label="Global description" textarea value={data.seo.globalDescription} onChange={(v) => setData({ ...data, seo: { ...data.seo, globalDescription: v } })} />
           <Field label="OG image URL" value={data.seo.ogImage || ""} onChange={(v) => setData({ ...data, seo: { ...data.seo, ogImage: v } })} />
           <Field label="Canonical base URL" value={data.seo.canonicalBase} onChange={(v) => setData({ ...data, seo: { ...data.seo, canonicalBase: v } })} />
-          <p className="text-xs text-[var(--color-muted)] pt-2">Per-page titles/descriptions</p>
+          <p className="text-xs text-[var(--admin-text-muted)] pt-2">Per-page titles/descriptions</p>
           <Field label="Homepage title" value={data.seo.homepage.title} onChange={(v) => setData({ ...data, seo: { ...data.seo, homepage: { ...data.seo.homepage, title: v } } })} />
           <Field label="Homepage description" value={data.seo.homepage.description} onChange={(v) => setData({ ...data, seo: { ...data.seo, homepage: { ...data.seo.homepage, description: v } } })} />
-          <Button size="sm" disabled={saving} onClick={() => save({ seo: data.seo })}>Save SEO settings</Button>
+          <AdminButton size="sm" disabled={saving} onClick={() => save({ seo: data.seo })}>Save SEO settings</AdminButton>
         </div>
       )}
 
-      {tab === "Logo" && (
-        <div className="space-y-3">
-          <p className="text-xs text-[var(--color-muted)]">
-            Paste a URL from the Media Library (upload there first, then copy the URL here).
-          </p>
-          <Field label="Light logo URL" value={data.logo.lightLogo || ""} onChange={(v) => setData({ ...data, logo: { ...data.logo, lightLogo: v } })} />
-          <Field label="Dark logo URL" value={data.logo.darkLogo || ""} onChange={(v) => setData({ ...data, logo: { ...data.logo, darkLogo: v } })} />
-          <Field label="Favicon URL" value={data.logo.favicon || ""} onChange={(v) => setData({ ...data, logo: { ...data.logo, favicon: v } })} />
-          <Button size="sm" disabled={saving} onClick={() => save({ logo: data.logo })}>Save logo settings</Button>
+      {/* Logo, favicon, payment QR and Instagram have their own dedicated,
+          mobile-friendly pages — linked here rather than duplicated. */}
+      <div className="admin-card p-4">
+        <p className="mb-3 text-sm text-[var(--admin-text-muted)]">Managed on their own pages:</p>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/logo"><AdminButton size="sm" variant="secondary">Logo</AdminButton></Link>
+          <Link href="/admin/favicon"><AdminButton size="sm" variant="secondary">Favicon</AdminButton></Link>
+          <Link href="/admin/payment"><AdminButton size="sm" variant="secondary">Payment QR</AdminButton></Link>
+          <Link href="/admin/instagram"><AdminButton size="sm" variant="secondary">Instagram</AdminButton></Link>
+          <Link href="/admin/seo"><AdminButton size="sm" variant="secondary">Full SEO editor</AdminButton></Link>
         </div>
-      )}
+      </div>
 
-      {tab === "Payment QR" && (
-        <div className="space-y-3">
-          <Field label="QR image URL" value={data.paymentQR.imageUrl} onChange={(v) => setData({ ...data, paymentQR: { ...data.paymentQR, imageUrl: v } })} />
-          <Field label="Instructions" textarea value={data.paymentQR.instructions} onChange={(v) => setData({ ...data, paymentQR: { ...data.paymentQR, instructions: v } })} />
-          <Field label="UPI ID" value={data.paymentQR.upiId || ""} onChange={(v) => setData({ ...data, paymentQR: { ...data.paymentQR, upiId: v } })} />
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={data.paymentQR.enabled}
-              onChange={(e) => setData({ ...data, paymentQR: { ...data.paymentQR, enabled: e.target.checked } })}
-            />
-            Payments enabled
-          </label>
-          <Button size="sm" disabled={saving} onClick={() => save({ paymentQR: data.paymentQR })}>Save payment settings</Button>
-        </div>
-      )}
     </div>
   );
 }
@@ -142,21 +133,12 @@ function Field({
   textarea?: boolean;
 }) {
   return (
-    <label className="block text-xs text-[var(--color-muted)]">
+    <label className="block text-xs font-medium text-[var(--admin-text-muted)]">
       {label}
       {textarea ? (
-        <textarea
-          className="w-full mt-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm text-[var(--color-foreground)]"
-          rows={3}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
+        <textarea className="mt-1" rows={3} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <input
-          className="w-full mt-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm text-[var(--color-foreground)]"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
+        <input className="mt-1" value={value} onChange={(e) => onChange(e.target.value)} />
       )}
     </label>
   );

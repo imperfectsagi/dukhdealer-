@@ -16,7 +16,7 @@ VALUES (
 );
 
 INSERT OR IGNORE INTO theme_settings (id, primary_color, secondary_color, background, foreground, accent, card, border, muted, cta, cta_text)
-VALUES ('default', '#1a1a2e', '#16213e', '#0f0f1a', '#e8e6e3', '#c9a227', '#1a1a2e', '#2a2a3e', '#6b6b80', '#c9a227', '#0f0f1a');
+VALUES ('default', '#5B2A5F', '#431F46', '#FFF8F2', '#29212B', '#F4A261', '#FFFFFF', '#E8DDE4', '#756B76', '#E76F35', '#FFFFFF');
 
 INSERT OR IGNORE INTO seo_settings (id, global_title, global_description, og_image, homepage_title, homepage_description, about_title, about_description, services_title, services_description, faq_title, faq_description, blog_title, blog_description, canonical_base)
 VALUES (
@@ -37,8 +37,12 @@ VALUES (
   'https://dukhdealer.com'
 );
 
+-- Logos start empty: the public header falls back to the website-name wordmark until
+-- an admin uploads one in Admin Panel -> Logo. The previous seed pointed at
+-- /logo-light.svg and /logo-dark.svg, which do not exist in /public and rendered as
+-- broken images.
 INSERT OR IGNORE INTO logo_settings (id, light_logo, dark_logo, favicon)
-VALUES ('default', '/logo-light.svg', '/logo-dark.svg', '/favicon.ico');
+VALUES ('default', NULL, NULL, '/favicon.ico');
 
 INSERT OR IGNORE INTO payment_qr (id, image_url, instructions, enabled, upi_id)
 VALUES ('default', '/mock/payment-qr.svg', 'Scan the QR with any UPI app. Pay the exact amount shown. Then upload a clear screenshot of the successful payment.', 1, 'dukhdealer@upi');
@@ -58,7 +62,7 @@ INSERT OR IGNORE INTO customers (id, nickname, email, created_at) VALUES
 ('cust-001', 'Anonymous', 'demo@example.com', '2026-01-15T10:00:00Z');
 
 INSERT OR IGNORE INTO bookings (id, booking_id, customer_id, customer_nickname, package_id, package_name, service_type, duration, listener_id, listener_name, date, time, amount, currency, payment_status, booking_status, payment_screenshot, conversation_preference, language, created_at, updated_at) VALUES
-('bk-001', 'DD-2026-A1B2C', 'cust-001', 'Riya', 'pkg-002', '30 Minute Conversation', 'private_voice', 30, 'lst-001', 'Aarav', '2026-09-20', '19:00', 699, 'INR', 'verification_pending', 'payment_verification_pending', '/mock/payment-sample.png', 'just_listen', 'hinglish', '2026-09-16T12:00:00Z', '2026-09-16T12:30:00Z'),
+('bk-001', 'DD-2026-A1B2C', 'cust-001', 'Riya', 'pkg-002', '30 Minute Conversation', 'private_voice', 30, 'lst-001', 'Aarav', '2026-09-20', '19:00', 699, 'INR', 'verification_pending', 'payment_verification_pending', NULL, 'just_listen', 'hinglish', '2026-09-16T12:00:00Z', '2026-09-16T12:30:00Z'),
 ('bk-002', 'DD-2026-X9Y8Z', 'cust-001', 'Dev', 'pkg-003', '60 Minute Conversation', 'mystery_video', 60, 'lst-003', 'Kabir', '2026-09-18', '20:00', 1199, 'INR', 'verified', 'confirmed', NULL, 'talk_with_me', 'english', '2026-09-15T09:00:00Z', '2026-09-15T10:00:00Z');
 
 INSERT OR IGNORE INTO reviews (id, display_name, text, rating, status, display_order, created_at) VALUES
@@ -89,7 +93,7 @@ INSERT OR IGNORE INTO about_sections (id, title, content, published, display_ord
 INSERT OR IGNORE INTO media_library (id, name, url, r2_key, type, size, mime_type, created_at) VALUES
 ('media-001', 'payment-qr.svg', '/mock/payment-qr.svg', NULL, 'image', 2048, 'image/svg+xml', '2026-01-01T00:00:00Z');
 
--- Availability: next 14 days x 3 listeners x 5 time slots.
--- Generated once at seed time; the admin can regenerate more from the Admin Panel later
--- (dates below are placeholders — see scripts/generate-availability.sql notes in README for
--- refreshing this on a live deploy, since D1 seed SQL cannot compute "today" dynamically).
+-- Availability is NOT seeded on purpose.
+-- Booking slots are created by the admin in Admin Panel -> Availability (see
+-- availability_windows in 0003_part3_fixes.sql). If no window is open, customers
+-- cannot book -- which is the intended behaviour.

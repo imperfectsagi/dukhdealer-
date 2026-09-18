@@ -1,44 +1,51 @@
 import Link from "next/link";
 import Button from "@/components/ui/Button";
-import { getPackages, getReviews, getFAQs } from "@/lib/d1";
+import BannerHero from "@/components/public/BannerHero";
+import { getBanners, getCTABlocks, getFAQs, getPackages, getReviews, getSiteSettings } from "@/lib/d1";
 import { formatCurrency } from "@/lib/utils";
 import { SERVICE_TYPE_LABELS as LABELS } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [pkgs, revs, faqList] = await Promise.all([
+  const [pkgs, revs, faqList, banners, ctaBlocks, site] = await Promise.all([
     getPackages(true),
     getReviews(true),
     getFAQs(true),
+    getBanners(true),
+    getCTABlocks(true),
+    getSiteSettings(),
   ]);
+
+  // Highest-priority published banner drives the hero.
+  const banner = banners[0];
+  const finalCta = ctaBlocks[0];
+  const instagramActive = site.instagramEnabled && !!site.instagramUrl;
+  const instagramHandle = (() => {
+    try {
+      const path = new URL(site.instagramUrl).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+      return path.length ? `@${path[path.length - 1]}` : "Instagram";
+    } catch {
+      return "Instagram";
+    }
+  })();
 
   return (
     <div className="animate-fade-in">
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-[var(--color-border)]">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-20 sm:py-28 text-center">
-          <p className="text-sm uppercase tracking-widest text-[var(--color-accent)] mb-4">
-            Private conversations
-          </p>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight text-[var(--color-foreground)] max-w-3xl mx-auto leading-tight">
-            A private space to be heard
-          </h1>
-          <p className="mt-6 text-lg text-[var(--color-muted)] max-w-xl mx-auto">
-            Chat. Voice. Mystery Video. Real listening — no labels, no diagnosis.
-          </p>
-          <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/booking">
-              <Button size="lg">Book a Private Session</Button>
-            </Link>
-            <Link href="/about">
-              <Button size="lg" variant="outline">
-                See How It Works
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      {/* Hero — heading/description/CTA/media all come from Admin > Banners */}
+      <BannerHero
+        banner={banner}
+        eyebrow="Private conversations"
+        fallbackHeading={site.tagline || "A private space to be heard"}
+        fallbackDescription={
+          site.description || "Chat. Voice. Mystery Video. Real listening — no labels, no diagnosis."
+        }
+        primaryCta={{
+          label: site.ctaLabels?.primary || "Book a Private Session",
+          href: "/booking",
+        }}
+        secondaryCta={{ label: site.ctaLabels?.secondary || "See How It Works", href: "/about" }}
+      />
 
       {/* How it works */}
       <section className="py-16 sm:py-20 border-b border-[var(--color-border)]">
@@ -195,30 +202,37 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Instagram CTA */}
-      <section className="py-12 border-b border-[var(--color-border)]">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 text-center">
-          <p className="text-[var(--color-muted)] text-sm mb-3">Follow for quiet updates</p>
-          <a
-            href="https://instagram.com/dukhdealer"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--color-accent)] hover:underline text-sm font-medium"
-          >
-            @dukhdealer on Instagram
-          </a>
-        </div>
-      </section>
+      {/* Instagram CTA — URL, copy and visibility from Admin > Instagram.
+          Instagram is a follow CTA only; booking stays on this site. */}
+      {instagramActive && (
+        <section className="border-b border-[var(--color-border)] py-12">
+          <div className="mx-auto max-w-6xl px-4 text-center sm:px-6">
+            <p className="mb-3 text-sm text-[var(--color-muted)]">Follow for quiet updates</p>
+            <a
+              href={site.instagramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-[var(--color-primary)] hover:underline"
+            >
+              {site.instagramCtaText || `${instagramHandle} on Instagram`}
+            </a>
+          </div>
+        </section>
+      )}
 
-      {/* Final CTA */}
+      {/* Final CTA — from Admin > CTA block when one is enabled */}
       <section className="py-16 sm:py-24">
-        <div className="mx-auto max-w-2xl px-4 sm:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl font-semibold mb-4">Ready when you are</h2>
-          <p className="text-[var(--color-muted)] mb-8">
-            Choose a package and book a private conversation.
+        <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
+          <h2 className="mb-4 text-2xl font-semibold sm:text-3xl">
+            {finalCta?.heading || "Ready when you are"}
+          </h2>
+          <p className="mb-8 text-[var(--color-muted)]">
+            {finalCta?.description || "Choose a package and book a private conversation."}
           </p>
-          <Link href="/booking">
-            <Button size="lg">Book a Private Session</Button>
+          <Link href={finalCta?.url || "/booking"}>
+            <Button size="lg" className="w-full sm:w-auto">
+              {finalCta?.buttonText || site.ctaLabels?.primary || "Book a Private Session"}
+            </Button>
           </Link>
         </div>
       </section>

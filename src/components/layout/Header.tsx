@@ -1,11 +1,9 @@
-"use client";
-
 import Link from "next/link";
-import { useState } from "react";
-import { Menu, X } from "lucide-react";
-import Button from "@/components/ui/Button";
+import Logo from "@/components/ui/Logo";
+import HeaderNav, { type HeaderNavItem } from "@/components/layout/HeaderNav";
+import { getLogoSettings, getSiteSettings, withCacheBust } from "@/lib/d1";
 
-const nav = [
+const FALLBACK_NAV: HeaderNavItem[] = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
   { href: "/services", label: "Sessions" },
@@ -13,63 +11,48 @@ const nav = [
   { href: "/blog", label: "Blog" },
 ];
 
-export default function Header() {
-  const [open, setOpen] = useState(false);
+/**
+ * Server component so the header reflects CMS state on every request.
+ *
+ * This is the fix for "admin uploads a logo, public site keeps the old one":
+ * the header used to hard-code the text "Dukh Dealer" and never read
+ * logo_settings at all, so no upload could ever change it.
+ */
+export default async function Header() {
+  let websiteName = "Dukh Dealer";
+  let nav = FALLBACK_NAV;
+  let bookLabel = "Book a Session";
+  let logoSrc: string | undefined;
+  let logoAlt: string | undefined;
+
+  try {
+    const [site, logo] = await Promise.all([getSiteSettings(), getLogoSettings()]);
+    websiteName = site.websiteName || websiteName;
+    bookLabel = site.ctaLabels?.book || site.navigationLabels?.book || bookLabel;
+
+    const labels = site.navigationLabels || {};
+    nav = FALLBACK_NAV.map((item) => {
+      const key = item.href === "/" ? "home" : item.href.slice(1);
+      return { ...item, label: labels[key] || item.label };
+    });
+
+    const active = logo.activeLogo === "dark" ? logo.darkLogo : logo.lightLogo;
+    // Fall back to the other variant so a half-configured logo still renders.
+    logoSrc = withCacheBust(active || logo.lightLogo || logo.darkLogo, logo.updatedAt);
+    logoAlt = logo.logoAlt;
+  } catch {
+    // D1 unreachable (e.g. first boot before migrations) — keep static defaults.
+  }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-background)]/90 backdrop-blur-md">
+    <header className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-background)]/95 backdrop-blur-md">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="flex h-16 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-semibold tracking-tight text-[var(--color-accent)]">
-              Dukh Dealer
-            </span>
+        <div className="relative flex h-16 items-center justify-between gap-3">
+          <Link href="/" className="flex min-w-0 items-center gap-2" aria-label={websiteName}>
+            <Logo src={logoSrc} alt={logoAlt} websiteName={websiteName} />
           </Link>
-
-          <nav className="hidden md:flex items-center gap-8">
-            {nav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-sm text-[var(--color-muted)] hover:text-[var(--color-foreground)] transition-colors"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="hidden md:block">
-            <Link href="/booking">
-              <Button size="sm">Book a Session</Button>
-            </Link>
-          </div>
-
-          <button
-            className="md:hidden p-2 text-[var(--color-foreground)]"
-            onClick={() => setOpen(!open)}
-            aria-label="Toggle menu"
-          >
-            {open ? <X size={22} /> : <Menu size={22} />}
-          </button>
+          <HeaderNav items={nav} bookLabel={bookLabel} />
         </div>
-
-        {open && (
-          <div className="md:hidden pb-4 border-t border-[var(--color-border)] pt-4 space-y-3">
-            {nav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="block text-sm text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
-                onClick={() => setOpen(false)}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <Link href="/booking" onClick={() => setOpen(false)}>
-              <Button className="w-full mt-2">Book a Session</Button>
-            </Link>
-          </div>
-        )}
       </div>
     </header>
   );

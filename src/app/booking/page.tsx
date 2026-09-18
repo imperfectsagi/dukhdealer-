@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
-import { formatCurrency, formatDate, formatTime, cn } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import type {
-  Package,
-  Listener,
+  AvailabilityDay,
+  BookingFlowState,
   ConversationPreference,
   Language,
-  BookingFlowState,
+  Listener,
+  Package,
 } from "@/types";
 import { SERVICE_TYPE_LABELS } from "@/types";
 
@@ -26,268 +27,356 @@ const LANGUAGES: { value: Language; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+const STEPS = ["Package", "Preference", "Language", "Listener", "Date", "Time", "Summary", "Payment"];
+
+interface PaymentInfo {
+  imageUrl: string;
+  instructions: string;
+  upiId?: string;
+  enabled: boolean;
+}
+
 export default function BookingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+
   const [packages, setPackages] = useState<Package[]>([]);
   const [listeners, setListeners] = useState<Listener[]>([]);
-  const [slots, setSlots] = useState<{ time: string }[]>([]);
-  const [paymentInfo, setPaymentInfo] = useState<{ imageUrl: string; instructions: string; upiId?: string } | null>(null);
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
+  const [timezoneLabel, setTimezoneLabel] = useState("IST");
+
+  const [days, setDays] = useState<AvailabilityDay[]>([]);
+  const [slots, setSlots] = useState<string[]>([]);
+  const [loadingDays, setLoadingDays] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
   const [flow, setFlow] = useState<BookingFlowState>({ step: 1 });
   const [nickname, setNickname] = useState("");
-  const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [customLanguage, setCustomLanguage] = useState("");
+  const [languageError, setLanguageError] = useState("");
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ bookingId: string } | null>(null);
+  const [result, setResult] = useState<{ bookingId: string; statusUrl: string } | null>(null);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
+  // ---- Initial load ----
   useEffect(() => {
     fetch("/api/public/availability")
-      .then((res) => res.json() as Promise<{ packages: Package[]; listeners: Listener[]; paymentQR?: { imageUrl: string; instructions: string; upiId?: string } }>)
+      .then((res) => {
+        if (!res.ok) throw new Error("load failed");
+        return res.json() as Promise<{
+          packages: Package[];
+          listeners: Listener[];
+          paymentQR?: PaymentInfo;
+          timezoneLabel?: string;
+        }>;
+      })
       .then((data) => {
-        const active = data.packages.sort((a, b) => a.displayOrder - b.displayOrder);
+        const active = [...data.packages].sort((a, b) => a.displayOrder - b.displayOrder);
         setPackages(active);
         setListeners(data.listeners);
         if (data.paymentQR) setPaymentInfo(data.paymentQR);
+        if (data.timezoneLabel) setTimezoneLabel(data.timezoneLabel);
+
         const preselect = searchParams.get("package");
         if (preselect && active.find((p) => p.id === preselect)) {
           setFlow((f) => ({ ...f, packageId: preselect, step: 2 }));
         }
       })
-      .catch(() => setError("Couldn't load packages. Please refresh."));
+      .catch(() => setLoadError("Couldn't load packages. Please refresh the page."));
   }, [searchParams]);
 
   const selectedPkg = packages.find((p) => p.id === flow.packageId);
   const selectedListener = listeners.find((l) => l.id === flow.listenerId);
 
-  const loadSlots = useCallback((date: string, listenerId: string) => {
-    fetch(`/api/public/availability?date=${date}&listenerId=${listenerId}`)
-      .then((res) => res.json() as Promise<{ slots: { time: string }[] }>)
-      .then((data) => setSlots(data.slots))
-      .catch(() => setSlots([]));
+  // ---- Availability: only dates and times the admin has actually opened ----
+  const loadDays = useCallback(async (listenerId: string, packageId: string) => {
+    setLoadingDays(true);
+    try {
+      const res = await fetch(
+        `/api/public/availability?listenerId=${encodeURIComponent(listenerId)}&packageId=${encodeURIComponent(packageId)}`
+      );
+      const data = (await res.json()) as { days?: AvailabilityDay[] };
+      setDays(data.days || []);
+    } catch {
+      setDays([]);
+    } finally {
+      setLoadingDays(false);
+    }
+  }, []);
+
+  const loadSlots = useCallback(async (listenerId: string, packageId: string, date: string) => {
+    setLoadingSlots(true);
+    try {
+      const res = await fetch(
+        `/api/public/availability?listenerId=${encodeURIComponent(listenerId)}&packageId=${encodeURIComponent(packageId)}&date=${encodeURIComponent(date)}`
+      );
+      const data = (await res.json()) as { slots?: string[] };
+      setSlots(data.slots || []);
+    } catch {
+      setSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
   }, []);
 
   useEffect(() => {
-    if (flow.date && flow.listenerId) loadSlots(flow.date, flow.listenerId);
-  }, [flow.date, flow.listenerId, loadSlots]);
+    if (flow.listenerId && flow.packageId) loadDays(flow.listenerId, flow.packageId);
+  }, [flow.listenerId, flow.packageId, loadDays]);
+
+  useEffect(() => {
+    if (flow.listenerId && flow.packageId && flow.date) {
+      loadSlots(flow.listenerId, flow.packageId, flow.date);
+    }
+  }, [flow.listenerId, flow.packageId, flow.date, loadSlots]);
 
   const next = () => setFlow((f) => ({ ...f, step: f.step + 1 }));
   const back = () => setFlow((f) => ({ ...f, step: Math.max(1, f.step - 1) }));
 
+  const continueFromLanguage = () => {
+    if (flow.language === "other" && !customLanguage.trim()) {
+      setLanguageError("Please enter your preferred language.");
+      return;
+    }
+    setLanguageError("");
+    next();
+  };
+
   const handleFile = (file: File | null) => {
     if (!file) {
-      setScreenshot(null);
+      setScreenshotPreview(null);
       setScreenshotFile(null);
       return;
     }
     const valid = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     if (!valid.includes(file.type)) {
-      setError("Please upload JPG, PNG, or WEBP.");
+      setError("Please upload a JPG, PNG or WEBP image.");
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError("File must be under 5MB.");
+      setError("The file must be under 5MB.");
       return;
     }
     setError("");
     setScreenshotFile(file);
     const reader = new FileReader();
-    reader.onload = () => setScreenshot(reader.result as string);
+    reader.onload = () => setScreenshotPreview(reader.result as string);
     reader.readAsDataURL(file);
   };
 
   const confirmBooking = async () => {
-    if (!selectedPkg || !selectedListener || !flow.date || !flow.time || !nickname) return;
+    if (!selectedPkg || !selectedListener || !flow.date || !flow.time || !nickname.trim()) return;
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/public/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // multipart so the screenshot is streamed to R2 rather than stuffed into
+      // the database as a base64 string.
+      const form = new FormData();
+      form.append(
+        "payload",
+        JSON.stringify({
           packageId: selectedPkg.id,
           listenerId: selectedListener.id,
           date: flow.date,
           time: flow.time,
-          customerNickname: nickname,
+          customerNickname: nickname.trim(),
           conversationPreference: flow.conversationPreference,
           language: flow.language,
-          paymentScreenshot: screenshot || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error || "Something went wrong. Please try again.");
+          languageCustom: flow.language === "other" ? customLanguage.trim() : undefined,
+        })
+      );
+      if (screenshotFile) form.append("screenshot", screenshotFile);
+
+      const res = await fetch("/api/public/bookings", { method: "POST", body: form });
+      const data = (await res.json().catch(() => ({}))) as {
+        bookingId?: string;
+        statusUrl?: string;
+        error?: string;
+        reason?: string;
+      };
+
+      if (!res.ok || !data.bookingId) {
+        setError(data.error || "Something went wrong. Please try again.");
+        // If the slot went while they were paying, send them back to pick again.
+        if (res.status === 409) {
+          setFlow((f) => ({ ...f, time: undefined, step: 6 }));
+          if (flow.listenerId && flow.packageId && flow.date) {
+            loadSlots(flow.listenerId, flow.packageId, flow.date);
+          }
+        }
         return;
       }
-      const data = await res.json() as { bookingId: string };
-      setResult({ bookingId: data.bookingId });
+
+      // The access token is what proves this booking is theirs. Keep a copy so
+      // returning to /booking/<id> later on this device still works.
+      const statusUrl = data.statusUrl || `/booking/${data.bookingId}`;
+      try {
+        const token = new URL(statusUrl, window.location.origin).searchParams.get("k");
+        if (token) localStorage.setItem(`dd_booking_${data.bookingId}`, token);
+      } catch {
+        // Private browsing / storage disabled — the URL still carries the token.
+      }
+
+      setResult({ bookingId: data.bookingId, statusUrl });
       setFlow((f) => ({ ...f, step: 9 }));
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError("Something went wrong. Please check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Date helpers
-  const today = new Date();
-  const dates: string[] = [];
-  for (let i = 1; i <= 14; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    dates.push(d.toISOString().slice(0, 10));
-  }
-
+  // ---- Confirmation ----
   if (result && flow.step === 9) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center animate-fade-in">
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-8">
-          <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6">
-            <span className="text-2xl text-green-400">✓</span>
+      <div className="animate-fade-in mx-auto max-w-lg px-4 py-16 text-center">
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 sm:p-8">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/15">
+            <span className="text-2xl text-green-600">✓</span>
           </div>
-          <h1 className="text-2xl font-semibold mb-2">Booking Submitted</h1>
-          <p className="text-[var(--color-muted)] text-sm mb-6">
-            Your payment proof is under verification.
+          <h1 className="mb-2 text-2xl font-semibold">Booking Submitted</h1>
+          <p className="mb-6 text-sm text-[var(--color-muted)]">
+            Your payment proof is being verified. Once it is approved we&rsquo;ll add your Google
+            Meet link to this booking.
           </p>
-          <div className="rounded-lg bg-[var(--color-background)] border border-[var(--color-border)] p-4 mb-6">
-            <p className="text-xs text-[var(--color-muted)] mb-1">Booking ID</p>
-            <p className="text-xl font-mono font-semibold text-[var(--color-accent)]">
+          <div className="mb-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] p-4">
+            <p className="mb-1 text-xs text-[var(--color-muted)]">Booking ID</p>
+            <p className="break-anywhere font-mono text-xl font-semibold text-[var(--color-primary)]">
               {result.bookingId}
             </p>
           </div>
+          <p className="mb-6 text-xs text-[var(--color-muted)]">
+            Save this link — it is how you open your booking and join your session.
+          </p>
           {selectedPkg && (
-            <div className="text-left text-sm space-y-2 mb-8 text-[var(--color-muted)]">
+            <div className="mb-8 space-y-2 text-left text-sm text-[var(--color-muted)]">
               <p><span className="text-[var(--color-foreground)]">Package:</span> {selectedPkg.name}</p>
               <p><span className="text-[var(--color-foreground)]">Service:</span> {SERVICE_TYPE_LABELS[selectedPkg.serviceType]}</p>
               <p><span className="text-[var(--color-foreground)]">Date:</span> {formatDate(flow.date!)}</p>
-              <p><span className="text-[var(--color-foreground)]">Time:</span> {formatTime(flow.time!)}</p>
+              <p><span className="text-[var(--color-foreground)]">Time:</span> {formatTime(flow.time!)} {timezoneLabel}</p>
               <p><span className="text-[var(--color-foreground)]">Listener:</span> {selectedListener?.nickname}</p>
               <p><span className="text-[var(--color-foreground)]">Status:</span> Payment Verification Pending</p>
             </div>
           )}
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button onClick={() => router.push(`/booking/${result.bookingId}`)}>
-              View Booking
-            </Button>
-            <Button variant="outline" onClick={() => router.push("/")}>
-              Back to Home
-            </Button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button onClick={() => router.push(result.statusUrl)}>View Booking</Button>
+            <Button variant="outline" onClick={() => router.push("/")}>Back to Home</Button>
           </div>
         </div>
       </div>
     );
   }
 
-  const steps = [
-    "Package",
-    "Preference",
-    "Language",
-    "Listener",
-    "Date",
-    "Time",
-    "Summary",
-    "Payment",
-  ];
+  const cardClass = (selected: boolean) =>
+    cn(
+      "w-full rounded-xl border p-4 text-left transition-all",
+      selected
+        ? "border-[var(--color-primary)] bg-[var(--color-card)] ring-1 ring-[var(--color-primary)]"
+        : "border-[var(--color-border)] hover:border-[var(--color-muted)]"
+    );
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:py-16">
-      <h1 className="text-2xl sm:text-3xl font-semibold text-center mb-2">Book a Session</h1>
-      <p className="text-center text-sm text-[var(--color-muted)] mb-8">
+      <h1 className="mb-2 text-center text-2xl font-semibold sm:text-3xl">Book a Session</h1>
+      <p className="mb-8 text-center text-sm text-[var(--color-muted)]">
         Step {Math.min(flow.step, 8)} of 8
       </p>
 
-      {/* Progress */}
-      <div className="flex gap-1 mb-10 overflow-x-auto pb-2">
-        {steps.map((s, i) => (
+      <div
+        className="mb-10 flex gap-1"
+        role="progressbar"
+        aria-valuenow={Math.min(flow.step, 8)}
+        aria-valuemin={1}
+        aria-valuemax={8}
+        aria-label="Booking progress"
+      >
+        {STEPS.map((s, i) => (
           <div
             key={s}
             className={cn(
-              "flex-1 min-w-[60px] h-1 rounded-full",
-              i + 1 <= flow.step ? "bg-[var(--color-accent)]" : "bg-[var(--color-border)]"
+              "h-1 flex-1 rounded-full",
+              i + 1 <= flow.step ? "bg-[var(--color-primary)]" : "bg-[var(--color-border)]"
             )}
           />
         ))}
       </div>
 
+      {loadError && (
+        <p role="alert" className="mb-6 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {loadError}
+        </p>
+      )}
+
       {/* Step 1: Package */}
       {flow.step === 1 && (
-        <div className="space-y-4 animate-fade-in">
-          <h2 className="text-lg font-medium mb-4">Select a package</h2>
+        <div className="animate-fade-in space-y-4">
+          <h2 className="mb-4 text-lg font-medium">Select a package</h2>
+          {packages.length === 0 && !loadError && (
+            <p className="text-sm text-[var(--color-muted)]">Loading packages…</p>
+          )}
           {packages.map((pkg) => (
             <button
               key={pkg.id}
-              onClick={() => setFlow((f) => ({ ...f, packageId: pkg.id }))}
-              className={cn(
-                "w-full text-left rounded-xl border p-4 transition-all",
-                flow.packageId === pkg.id
-                  ? "border-[var(--color-accent)] bg-[var(--color-card)]"
-                  : "border-[var(--color-border)] hover:border-[var(--color-muted)]"
-              )}
+              onClick={() => setFlow((f) => ({ ...f, packageId: pkg.id, listenerId: undefined, date: undefined, time: undefined }))}
+              className={cardClass(flow.packageId === pkg.id)}
             >
-              <div className="flex justify-between items-start">
-                <div>
-                  {pkg.badge && (
-                    <span className="text-xs text-[var(--color-accent)]">{pkg.badge}</span>
-                  )}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  {pkg.badge && <span className="text-xs text-[var(--color-primary)]">{pkg.badge}</span>}
                   <p className="font-medium">{pkg.name}</p>
-                  <p className="text-sm text-[var(--color-muted)] mt-1">
+                  <p className="mt-1 text-sm text-[var(--color-muted)]">
                     {SERVICE_TYPE_LABELS[pkg.serviceType]} · {pkg.duration} min
                   </p>
                 </div>
-                <p className="font-semibold text-[var(--color-accent)]">
+                <p className="shrink-0 font-semibold text-[var(--color-primary)]">
                   {formatCurrency(pkg.price, pkg.currency)}
                 </p>
               </div>
             </button>
           ))}
-          <Button className="w-full mt-4" disabled={!flow.packageId} onClick={next}>
-            Continue
-          </Button>
+          <Button className="mt-4 w-full" disabled={!flow.packageId} onClick={next}>Continue</Button>
         </div>
       )}
 
       {/* Step 2: Preference */}
       {flow.step === 2 && (
-        <div className="space-y-4 animate-fade-in">
-          <h2 className="text-lg font-medium mb-4">What do you want from this conversation?</h2>
+        <div className="animate-fade-in space-y-4">
+          <h2 className="mb-4 text-lg font-medium">What do you want from this conversation?</h2>
           {PREFERENCES.map((p) => (
             <button
               key={p.value}
               onClick={() => setFlow((f) => ({ ...f, conversationPreference: p.value }))}
-              className={cn(
-                "w-full text-left rounded-xl border p-4",
-                flow.conversationPreference === p.value
-                  ? "border-[var(--color-accent)] bg-[var(--color-card)]"
-                  : "border-[var(--color-border)]"
-              )}
+              className={cardClass(flow.conversationPreference === p.value)}
             >
               <p className="font-medium">{p.label}</p>
-              <p className="text-sm text-[var(--color-muted)] mt-1">{p.desc}</p>
+              <p className="mt-1 text-sm text-[var(--color-muted)]">{p.desc}</p>
             </button>
           ))}
-          <div className="flex gap-3 mt-4">
+          <div className="mt-4 flex gap-3">
             <Button variant="outline" onClick={back}>Back</Button>
-            <Button className="flex-1" disabled={!flow.conversationPreference} onClick={next}>
-              Continue
-            </Button>
+            <Button className="flex-1" disabled={!flow.conversationPreference} onClick={next}>Continue</Button>
           </div>
         </div>
       )}
 
-      {/* Step 3: Language */}
+      {/* Step 3: Language, with the free-text "Other" option */}
       {flow.step === 3 && (
-        <div className="space-y-4 animate-fade-in">
-          <h2 className="text-lg font-medium mb-4">Choose language</h2>
+        <div className="animate-fade-in space-y-4">
+          <h2 className="mb-4 text-lg font-medium">Choose language</h2>
           <div className="grid grid-cols-2 gap-3">
             {LANGUAGES.map((l) => (
               <button
                 key={l.value}
-                onClick={() => setFlow((f) => ({ ...f, language: l.value }))}
+                onClick={() => {
+                  setFlow((f) => ({ ...f, language: l.value }));
+                  setLanguageError("");
+                }}
                 className={cn(
-                  "rounded-xl border p-4 text-center",
+                  "min-h-12 rounded-xl border p-4 text-center transition-all",
                   flow.language === l.value
-                    ? "border-[var(--color-accent)] bg-[var(--color-card)]"
+                    ? "border-[var(--color-primary)] bg-[var(--color-card)] ring-1 ring-[var(--color-primary)]"
                     : "border-[var(--color-border)]"
                 )}
               >
@@ -295,9 +384,34 @@ export default function BookingPage() {
               </button>
             ))}
           </div>
-          <div className="flex gap-3 mt-4">
+
+          {flow.language === "other" && (
+            <div className="animate-fade-in">
+              <label htmlFor="custom-language" className="mb-1 block text-sm text-[var(--color-muted)]">
+                Please enter your preferred language
+              </label>
+              <input
+                id="custom-language"
+                type="text"
+                value={customLanguage}
+                maxLength={60}
+                onChange={(e) => {
+                  setCustomLanguage(e.target.value);
+                  if (e.target.value.trim()) setLanguageError("");
+                }}
+                placeholder="e.g. Marathi, Tamil, Bengali"
+                aria-invalid={languageError ? true : undefined}
+                className="min-h-12 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-2.5 text-base outline-none focus:border-[var(--color-primary)]"
+              />
+              {languageError && (
+                <p role="alert" className="mt-1 text-sm text-red-600">{languageError}</p>
+              )}
+            </div>
+          )}
+
+          <div className="mt-4 flex gap-3">
             <Button variant="outline" onClick={back}>Back</Button>
-            <Button className="flex-1" disabled={!flow.language} onClick={next}>
+            <Button className="flex-1" disabled={!flow.language} onClick={continueFromLanguage}>
               Continue
             </Button>
           </div>
@@ -306,99 +420,112 @@ export default function BookingPage() {
 
       {/* Step 4: Listener */}
       {flow.step === 4 && (
-        <div className="space-y-4 animate-fade-in">
-          <h2 className="text-lg font-medium mb-4">Choose a listener</h2>
+        <div className="animate-fade-in space-y-4">
+          <h2 className="mb-4 text-lg font-medium">Choose a listener</h2>
+          {listeners.filter((l) => !selectedPkg || l.modes.includes(selectedPkg.serviceType)).length === 0 && (
+            <p className="text-sm text-[var(--color-muted)]">
+              No listener currently offers this session type. Please choose a different package.
+            </p>
+          )}
           {listeners
             .filter((l) => !selectedPkg || l.modes.includes(selectedPkg.serviceType))
             .map((l) => (
               <button
                 key={l.id}
-                onClick={() => setFlow((f) => ({ ...f, listenerId: l.id }))}
-                className={cn(
-                  "w-full text-left rounded-xl border p-4",
-                  flow.listenerId === l.id
-                    ? "border-[var(--color-accent)] bg-[var(--color-card)]"
-                    : "border-[var(--color-border)]"
-                )}
+                onClick={() => setFlow((f) => ({ ...f, listenerId: l.id, date: undefined, time: undefined }))}
+                className={cardClass(flow.listenerId === l.id)}
               >
                 <p className="font-medium">{l.nickname}</p>
-                <p className="text-sm text-[var(--color-muted)] mt-1">{l.style}</p>
-                <p className="text-xs text-[var(--color-muted)] mt-2">
-                  {l.languages.join(" · ")}
-                </p>
+                <p className="mt-1 text-sm text-[var(--color-muted)]">{l.style}</p>
+                <p className="mt-2 text-xs text-[var(--color-muted)]">{l.languages.join(" · ")}</p>
               </button>
             ))}
-          <div className="flex gap-3 mt-4">
+          <div className="mt-4 flex gap-3">
             <Button variant="outline" onClick={back}>Back</Button>
-            <Button className="flex-1" disabled={!flow.listenerId} onClick={next}>
-              Continue
-            </Button>
+            <Button className="flex-1" disabled={!flow.listenerId} onClick={next}>Continue</Button>
           </div>
         </div>
       )}
 
-      {/* Step 5: Date */}
+      {/* Step 5: Date — only dates the admin opened for this listener + duration */}
       {flow.step === 5 && (
-        <div className="space-y-4 animate-fade-in">
-          <h2 className="text-lg font-medium mb-4">Select date</h2>
-          <p className="text-xs text-[var(--color-muted)] mb-2">Timezone: IST (Asia/Kolkata)</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {dates.map((d) => (
-              <button
-                key={d}
-                onClick={() => setFlow((f) => ({ ...f, date: d, time: undefined }))}
-                className={cn(
-                  "rounded-lg border p-3 text-sm text-center",
-                  flow.date === d
-                    ? "border-[var(--color-accent)] bg-[var(--color-card)]"
-                    : "border-[var(--color-border)]"
-                )}
-              >
-                {formatDate(d)}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-3 mt-4">
+        <div className="animate-fade-in space-y-4">
+          <h2 className="mb-1 text-lg font-medium">Select date</h2>
+          <p className="mb-2 text-xs text-[var(--color-muted)]">
+            Times shown in {timezoneLabel}. Only dates your listener is available are listed.
+          </p>
+          {loadingDays ? (
+            <p className="text-sm text-[var(--color-muted)]">Checking availability…</p>
+          ) : days.length === 0 ? (
+            <p className="rounded-lg border border-[var(--color-border)] p-4 text-sm text-[var(--color-muted)]">
+              {selectedListener?.nickname || "This listener"} has no open dates for a{" "}
+              {selectedPkg?.duration}-minute session right now. Try another listener or check back soon.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {days.map((d) => (
+                <button
+                  key={d.date}
+                  onClick={() => setFlow((f) => ({ ...f, date: d.date, time: undefined }))}
+                  className={cn(
+                    "min-h-12 rounded-lg border p-3 text-center text-sm",
+                    flow.date === d.date
+                      ? "border-[var(--color-primary)] bg-[var(--color-card)] ring-1 ring-[var(--color-primary)]"
+                      : "border-[var(--color-border)]"
+                  )}
+                >
+                  {formatDate(d.date)}
+                  <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
+                    {d.times.length} slot{d.times.length === 1 ? "" : "s"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="mt-4 flex gap-3">
             <Button variant="outline" onClick={back}>Back</Button>
-            <Button className="flex-1" disabled={!flow.date} onClick={next}>
-              Continue
-            </Button>
+            <Button className="flex-1" disabled={!flow.date} onClick={next}>Continue</Button>
           </div>
         </div>
       )}
 
       {/* Step 6: Time */}
       {flow.step === 6 && (
-        <div className="space-y-4 animate-fade-in">
-          <h2 className="text-lg font-medium mb-4">Select time</h2>
-          <p className="text-sm text-[var(--color-muted)] mb-2">
-            {flow.date && formatDate(flow.date)} · IST
+        <div className="animate-fade-in space-y-4">
+          <h2 className="mb-1 text-lg font-medium">Select time</h2>
+          <p className="mb-2 text-sm text-[var(--color-muted)]">
+            {flow.date && formatDate(flow.date)} · {timezoneLabel}
           </p>
-          {slots.length === 0 ? (
-            <p className="text-sm text-[var(--color-muted)]">No slots available for this date.</p>
+          <p className="text-xs text-[var(--color-muted)]">
+            Start times that fit your {selectedPkg?.duration}-minute session.
+          </p>
+          {loadingSlots ? (
+            <p className="text-sm text-[var(--color-muted)]">Loading times…</p>
+          ) : slots.length === 0 ? (
+            <p className="rounded-lg border border-[var(--color-border)] p-4 text-sm text-[var(--color-muted)]">
+              No times left on this date. Please pick another date.
+            </p>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {slots.map((s) => (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {slots.map((time) => (
                 <button
-                  key={s.time}
-                  onClick={() => setFlow((f) => ({ ...f, time: s.time }))}
+                  key={time}
+                  onClick={() => setFlow((f) => ({ ...f, time }))}
                   className={cn(
-                    "rounded-lg border p-3 text-sm",
-                    flow.time === s.time
-                      ? "border-[var(--color-accent)] bg-[var(--color-card)]"
+                    "min-h-12 rounded-lg border p-3 text-sm",
+                    flow.time === time
+                      ? "border-[var(--color-primary)] bg-[var(--color-card)] ring-1 ring-[var(--color-primary)]"
                       : "border-[var(--color-border)]"
                   )}
                 >
-                  {formatTime(s.time)}
+                  {formatTime(time)}
                 </button>
               ))}
             </div>
           )}
-          <div className="flex gap-3 mt-4">
+          <div className="mt-4 flex gap-3">
             <Button variant="outline" onClick={back}>Back</Button>
-            <Button className="flex-1" disabled={!flow.time} onClick={next}>
-              Continue
-            </Button>
+            <Button className="flex-1" disabled={!flow.time} onClick={next}>Continue</Button>
           </div>
         </div>
       )}
@@ -406,52 +533,40 @@ export default function BookingPage() {
       {/* Step 7: Summary */}
       {flow.step === 7 && selectedPkg && selectedListener && (
         <div className="animate-fade-in">
-          <h2 className="text-lg font-medium mb-4">Booking summary</h2>
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-[var(--color-muted)]">Package</span>
-              <span>{selectedPkg.name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[var(--color-muted)]">Type</span>
-              <span>{SERVICE_TYPE_LABELS[selectedPkg.serviceType]}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[var(--color-muted)]">Duration</span>
-              <span>{selectedPkg.duration} min</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[var(--color-muted)]">Listener</span>
-              <span>{selectedListener.nickname}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[var(--color-muted)]">Date</span>
-              <span>{formatDate(flow.date!)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[var(--color-muted)]">Time</span>
-              <span>{formatTime(flow.time!)} IST</span>
-            </div>
-            <div className="pt-3 border-t border-[var(--color-border)] flex justify-between font-semibold">
+          <h2 className="mb-4 text-lg font-medium">Booking summary</h2>
+          <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4 text-sm sm:p-6">
+            <Row label="Package" value={selectedPkg.name} />
+            <Row label="Type" value={SERVICE_TYPE_LABELS[selectedPkg.serviceType]} />
+            <Row label="Duration" value={`${selectedPkg.duration} min`} />
+            <Row label="Listener" value={selectedListener.nickname} />
+            <Row
+              label="Language"
+              value={flow.language === "other" ? customLanguage || "Other" : LANGUAGES.find((l) => l.value === flow.language)?.label || "—"}
+            />
+            <Row label="Date" value={formatDate(flow.date!)} />
+            <Row label="Time" value={`${formatTime(flow.time!)} ${timezoneLabel}`} />
+            <div className="flex justify-between border-t border-[var(--color-border)] pt-3 font-semibold">
               <span>Total</span>
-              <span className="text-[var(--color-accent)]">
+              <span className="text-[var(--color-primary)]">
                 {formatCurrency(selectedPkg.price, selectedPkg.currency)}
               </span>
             </div>
           </div>
           <div className="mt-4">
-            <label className="block text-sm text-[var(--color-muted)] mb-1">
-              Your nickname (shown to listener)
+            <label htmlFor="nickname" className="mb-1 block text-sm text-[var(--color-muted)]">
+              Your nickname (shown to your listener)
             </label>
             <input
+              id="nickname"
               type="text"
               value={nickname}
+              maxLength={80}
               onChange={(e) => setNickname(e.target.value)}
               placeholder="e.g. Riya"
-              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-2.5 text-sm focus:border-[var(--color-accent)] outline-none"
+              className="min-h-12 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-2.5 text-base outline-none focus:border-[var(--color-primary)]"
             />
           </div>
-          <div className="flex gap-3 mt-6">
+          <div className="mt-6 flex gap-3">
             <Button variant="outline" onClick={back}>Back</Button>
             <Button className="flex-1" disabled={!nickname.trim()} onClick={next}>
               Continue to Payment
@@ -463,31 +578,39 @@ export default function BookingPage() {
       {/* Step 8: Payment */}
       {flow.step === 8 && selectedPkg && (
         <div className="animate-fade-in">
-          <h2 className="text-lg font-medium mb-4">Payment</h2>
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 text-center mb-6">
-            <p className="text-sm text-[var(--color-muted)] mb-2">Pay exactly</p>
-            <p className="text-3xl font-semibold text-[var(--color-accent)] mb-4">
+          <h2 className="mb-4 text-lg font-medium">Payment</h2>
+          <div className="mb-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4 text-center sm:p-6">
+            <p className="mb-2 text-sm text-[var(--color-muted)]">Pay exactly</p>
+            <p className="mb-4 text-3xl font-semibold text-[var(--color-primary)]">
               {formatCurrency(selectedPkg.price, selectedPkg.currency)}
             </p>
-            <div className="mx-auto w-48 h-48 bg-white rounded-lg flex items-center justify-center mb-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={paymentInfo?.imageUrl || "/mock/payment-qr.svg"} alt="Payment QR" className="w-full h-full object-contain" />
-            </div>
-            <p className="text-xs text-[var(--color-muted)] leading-relaxed">
+            {paymentInfo?.imageUrl && (
+              <div className="mx-auto mb-4 flex h-44 w-44 items-center justify-center rounded-lg bg-white sm:h-48 sm:w-48">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={paymentInfo.imageUrl}
+                  alt="Payment QR code"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+            )}
+            <p className="text-xs leading-relaxed text-[var(--color-muted)]">
               {paymentInfo?.instructions ||
-                "Scan with any UPI app. Pay the exact amount. Then upload a clear screenshot of the successful payment."}
+                "Scan with any UPI app, pay the exact amount, then upload a clear screenshot of the successful payment."}
             </p>
             {paymentInfo?.upiId && (
-              <p className="text-xs text-[var(--color-muted)] mt-2">UPI: {paymentInfo.upiId}</p>
+              <p className="break-anywhere mt-2 text-xs text-[var(--color-muted)]">
+                UPI: {paymentInfo.upiId}
+              </p>
             )}
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Upload payment screenshot</label>
-            {!screenshot ? (
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[var(--color-border)] rounded-xl cursor-pointer hover:border-[var(--color-accent)] transition-colors">
-                <span className="text-sm text-[var(--color-muted)]">Drag & drop or click</span>
-                <span className="text-xs text-[var(--color-muted)] mt-1">JPG, PNG, WEBP · max 5MB</span>
+            <span className="mb-2 block text-sm font-medium">Upload payment screenshot</span>
+            {!screenshotPreview ? (
+              <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--color-border)] transition-colors hover:border-[var(--color-primary)]">
+                <span className="text-sm text-[var(--color-muted)]">Tap to choose a file</span>
+                <span className="mt-1 text-xs text-[var(--color-muted)]">JPG, PNG, WEBP · max 5MB</span>
                 <input
                   type="file"
                   accept="image/jpeg,image/jpg,image/png,image/webp"
@@ -496,17 +619,19 @@ export default function BookingPage() {
                 />
               </label>
             ) : (
-              <div className="relative rounded-xl border border-[var(--color-border)] overflow-hidden">
+              <div className="overflow-hidden rounded-xl border border-[var(--color-border)]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={screenshot} alt="Payment proof" className="w-full max-h-48 object-contain bg-[var(--color-background)]" />
-                <div className="p-2 flex gap-2 justify-end bg-[var(--color-card)]">
-                  <Button size="sm" variant="outline" onClick={() => handleFile(null)}>
-                    Remove
-                  </Button>
-                  <label>
-                    <Button size="sm" variant="secondary">
-                      <span>Replace</span>
-                    </Button>
+                <img
+                  src={screenshotPreview}
+                  alt="Your payment proof"
+                  className="max-h-48 w-full bg-[var(--color-background)] object-contain"
+                />
+                <div className="flex justify-end gap-2 bg-[var(--color-card)] p-2">
+                  <Button size="sm" variant="outline" onClick={() => handleFile(null)}>Remove</Button>
+                  <label className="inline-flex">
+                    <span className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-[var(--color-border)] px-3 text-sm">
+                      Replace
+                    </span>
                     <input
                       type="file"
                       accept="image/jpeg,image/jpg,image/png,image/webp"
@@ -517,18 +642,14 @@ export default function BookingPage() {
                 </div>
               </div>
             )}
-            {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
+            {error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}
           </div>
 
-          {screenshot && (
-            <p className="text-sm text-green-400 mb-4">Payment proof uploaded.</p>
-          )}
-
           <div className="flex gap-3">
-            <Button variant="outline" onClick={back}>Back</Button>
+            <Button variant="outline" onClick={back} disabled={submitting}>Back</Button>
             <Button
               className="flex-1"
-              disabled={!screenshot || submitting}
+              disabled={(paymentInfo?.enabled !== false && !screenshotFile) || submitting}
               onClick={confirmBooking}
             >
               {submitting ? "Submitting…" : "Confirm Booking"}
@@ -536,6 +657,15 @@ export default function BookingPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="text-[var(--color-muted)]">{label}</span>
+      <span className="break-anywhere text-right">{value}</span>
     </div>
   );
 }

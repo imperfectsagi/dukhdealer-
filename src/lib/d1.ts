@@ -16,12 +16,17 @@ import type {
   SEOSettings,
   LogoSettings,
   MediaItem,
-  AvailabilitySlot,
+  AvailabilityWindow,
+  AboutPage,
+  AuditEntry,
   BookingStatus,
   PaymentStatus,
   ServiceType,
   Language,
+  BannerMediaType,
 } from "@/types";
+import { DEFAULT_TIMEZONE, toMinutes, zonedToUtc } from "@/lib/timezone";
+import { generateAccessToken } from "@/lib/booking-access";
 
 /** Access the D1 database binding. Throws a clear error if bindings aren't configured. */
 export async function getDB(): Promise<D1Database> {
@@ -101,9 +106,18 @@ function rowToBooking(r: Row): Booking {
     paymentStatus: r.payment_status as PaymentStatus,
     bookingStatus: r.booking_status as BookingStatus,
     paymentScreenshot: (r.payment_screenshot as string) || undefined,
+    paymentScreenshotKey: (r.payment_screenshot_key as string) || undefined,
     conversationPreference: (r.conversation_preference as Booking["conversationPreference"]) || undefined,
     language: (r.language as Language) || undefined,
+    languageCustom: (r.language_custom as string) || undefined,
+    googleMeetLink: (r.google_meet_link as string) || undefined,
+    meetLinkUpdatedAt: (r.meet_link_updated_at as string) || undefined,
+    timezone: (r.timezone as string) || DEFAULT_TIMEZONE,
+    startUtc: (r.start_utc as string) || undefined,
+    endUtc: (r.end_utc as string) || undefined,
     notes: (r.notes as string) || undefined,
+    deletedAt: (r.deleted_at as string) || undefined,
+    deletedBy: (r.deleted_by as string) || undefined,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -161,10 +175,17 @@ function rowToBanner(r: Row): Banner {
     description: r.description as string,
     ctaText: (r.cta_text as string) || undefined,
     ctaUrl: (r.cta_url as string) || undefined,
+    mediaType: ((r.media_type as BannerMediaType) || "none"),
     imageUrl: (r.image_url as string) || undefined,
     videoUrl: (r.video_url as string) || undefined,
+    posterUrl: (r.poster_url as string) || undefined,
+    videoAutoplay: r.video_autoplay === undefined ? true : !!r.video_autoplay,
+    videoMuted: r.video_muted === undefined ? true : !!r.video_muted,
+    videoLoop: r.video_loop === undefined ? true : !!r.video_loop,
+    videoControls: !!r.video_controls,
     published: !!r.published,
     displayOrder: r.display_order as number,
+    updatedAt: (r.updated_at as string) || undefined,
   };
 }
 
@@ -200,6 +221,7 @@ function rowToMediaItem(r: Row): MediaItem {
     id: r.id as string,
     name: r.name as string,
     url: r.url as string,
+    r2Key: (r.r2_key as string) || undefined,
     type: r.type as MediaItem["type"],
     size: r.size as number,
     mimeType: r.mime_type as string,
@@ -207,14 +229,32 @@ function rowToMediaItem(r: Row): MediaItem {
   };
 }
 
-function rowToAvailability(r: Row): AvailabilitySlot {
+function rowToWindow(r: Row): AvailabilityWindow {
   return {
     id: r.id as string,
     listenerId: r.listener_id as string,
     date: r.date as string,
-    time: r.time as string,
-    available: !!r.available,
-    booked: !!r.booked,
+    startTime: r.start_time as string,
+    endTime: r.end_time as string,
+    kind: r.kind as AvailabilityWindow["kind"],
+    timezone: (r.timezone as string) || DEFAULT_TIMEZONE,
+    note: (r.note as string) || undefined,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  };
+}
+
+function rowToAuditEntry(r: Row): AuditEntry {
+  return {
+    id: r.id as string,
+    adminId: (r.admin_id as string) || undefined,
+    adminEmail: (r.admin_email as string) || undefined,
+    action: r.action as string,
+    entityType: r.entity_type as string,
+    entityId: (r.entity_id as string) || undefined,
+    summary: r.summary as string,
+    details: (r.details as string) || undefined,
+    createdAt: r.created_at as string,
   };
 }
 
@@ -236,6 +276,10 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     footerText: r.footer_text as string,
     navigationLabels: JSON.parse((r.navigation_labels as string) || "{}"),
     ctaLabels: JSON.parse((r.cta_labels as string) || "{}"),
+    instagramEnabled: r.instagram_enabled === undefined ? true : !!r.instagram_enabled,
+    instagramCtaText:
+      (r.instagram_cta_text as string) || "Follow Dukh Dealer on Instagram",
+    timezone: (r.timezone as string) || DEFAULT_TIMEZONE,
   };
 }
 
@@ -245,7 +289,7 @@ export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<S
   const merged = { ...current, ...data };
   await db
     .prepare(
-      `UPDATE site_settings SET website_name=?, tagline=?, description=?, email=?, instagram_url=?, social_links=?, footer_text=?, navigation_labels=?, cta_labels=? WHERE id='default'`
+      `UPDATE site_settings SET website_name=?, tagline=?, description=?, email=?, instagram_url=?, social_links=?, footer_text=?, navigation_labels=?, cta_labels=?, instagram_enabled=?, instagram_cta_text=?, timezone=? WHERE id='default'`
     )
     .bind(
       merged.websiteName,
@@ -256,7 +300,10 @@ export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<S
       JSON.stringify(merged.socialLinks),
       merged.footerText,
       JSON.stringify(merged.navigationLabels),
-      JSON.stringify(merged.ctaLabels)
+      JSON.stringify(merged.ctaLabels),
+      merged.instagramEnabled ? 1 : 0,
+      merged.instagramCtaText,
+      merged.timezone || DEFAULT_TIMEZONE
     )
     .run();
   return merged;
@@ -355,6 +402,9 @@ export async function getLogoSettings(): Promise<LogoSettings> {
     lightLogo: (r.light_logo as string) || undefined,
     darkLogo: (r.dark_logo as string) || undefined,
     favicon: (r.favicon as string) || undefined,
+    activeLogo: (r.active_logo as LogoSettings["activeLogo"]) || "light",
+    logoAlt: (r.logo_alt as string) || undefined,
+    updatedAt: (r.updated_at as string) || undefined,
   };
 }
 
@@ -362,11 +412,36 @@ export async function updateLogoSettings(data: Partial<LogoSettings>): Promise<L
   const db = await getDB();
   const current = await getLogoSettings();
   const merged = { ...current, ...data };
+  merged.updatedAt = nowIso();
   await db
-    .prepare(`UPDATE logo_settings SET light_logo=?, dark_logo=?, favicon=? WHERE id='default'`)
-    .bind(merged.lightLogo || null, merged.darkLogo || null, merged.favicon || null)
+    .prepare(
+      `UPDATE logo_settings SET light_logo=?, dark_logo=?, favicon=?, active_logo=?, logo_alt=?, updated_at=? WHERE id='default'`
+    )
+    .bind(
+      merged.lightLogo || null,
+      merged.darkLogo || null,
+      merged.favicon || null,
+      merged.activeLogo === "dark" ? "dark" : "light",
+      merged.logoAlt || null,
+      merged.updatedAt
+    )
     .run();
   return merged;
+}
+
+/**
+ * The public logo/favicon URL, with a cache-busting suffix derived from the
+ * last save. R2 objects are served immutable (their key is a fresh UUID per
+ * upload), but the *settings row* can be re-pointed at any time — without this
+ * suffix a browser or Cloudflare edge that already cached the previous
+ * response for the same settings would keep showing the old logo.
+ */
+export function withCacheBust(url: string | undefined, version?: string): string | undefined {
+  if (!url) return undefined;
+  if (!version) return url;
+  const stamp = Date.parse(version);
+  if (Number.isNaN(stamp)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}v=${stamp}`;
 }
 
 export async function getPaymentQR(): Promise<PaymentQR> {
@@ -489,81 +564,259 @@ export async function getListenerById(id: string): Promise<Listener | undefined>
   return r ? rowToListener(r) : undefined;
 }
 
+export async function createListener(data: Omit<Listener, "id">): Promise<Listener> {
+  const db = await getDB();
+  const id = newId("lst");
+  await db
+    .prepare(
+      `INSERT INTO listeners (id, nickname, languages, style, modes, avatar, active, bio) VALUES (?,?,?,?,?,?,?,?)`
+    )
+    .bind(
+      id,
+      data.nickname,
+      JSON.stringify(data.languages || []),
+      data.style,
+      JSON.stringify(data.modes || []),
+      data.avatar || null,
+      data.active ? 1 : 0,
+      data.bio || null
+    )
+    .run();
+  return { ...data, id };
+}
+
+export async function updateListener(id: string, data: Partial<Listener>): Promise<Listener | null> {
+  const existing = await getListenerById(id);
+  if (!existing) return null;
+  const merged = { ...existing, ...data };
+  const db = await getDB();
+  await db
+    .prepare(
+      `UPDATE listeners SET nickname=?, languages=?, style=?, modes=?, avatar=?, active=?, bio=? WHERE id=?`
+    )
+    .bind(
+      merged.nickname,
+      JSON.stringify(merged.languages || []),
+      merged.style,
+      JSON.stringify(merged.modes || []),
+      merged.avatar || null,
+      merged.active ? 1 : 0,
+      merged.bio || null,
+      id
+    )
+    .run();
+  return merged;
+}
+
+export async function deleteListener(id: string): Promise<boolean> {
+  const db = await getDB();
+  const res = await db.prepare("DELETE FROM listeners WHERE id = ?").bind(id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
 // ============================================================
 // Bookings
 // ============================================================
 
-export async function getBookings(): Promise<Booking[]> {
+/** Columns every booking read selects. */
+const BOOKING_LIVE = "deleted_at IS NULL";
+
+export async function getBookings(options: { includeArchived?: boolean; archivedOnly?: boolean } = {}): Promise<Booking[]> {
   const db = await getDB();
-  const { results } = await db.prepare("SELECT * FROM bookings ORDER BY created_at DESC").all<Row>();
+  let where = `WHERE ${BOOKING_LIVE}`;
+  if (options.archivedOnly) where = "WHERE deleted_at IS NOT NULL";
+  else if (options.includeArchived) where = "";
+  const { results } = await db
+    .prepare(`SELECT * FROM bookings ${where} ORDER BY created_at DESC`)
+    .all<Row>();
   return (results || []).map(rowToBooking);
 }
 
-export async function getBookingById(id: string): Promise<Booking | undefined> {
+/**
+ * Look up by internal id OR by the public booking code (DD-2026-XXXXX).
+ * Archived bookings are excluded unless explicitly requested, so a deleted
+ * booking stops resolving on the customer status page.
+ */
+export async function getBookingById(
+  id: string,
+  options: { includeArchived?: boolean } = {}
+): Promise<Booking | undefined> {
   const db = await getDB();
+  const archivedClause = options.includeArchived ? "" : `AND ${BOOKING_LIVE}`;
   const r = await db
-    .prepare("SELECT * FROM bookings WHERE id = ? OR booking_id = ?")
+    .prepare(`SELECT * FROM bookings WHERE (id = ? OR booking_id = ?) ${archivedClause} LIMIT 1`)
     .bind(id, id)
     .first<Row>();
   return r ? rowToBooking(r) : undefined;
 }
 
+/** Reads the stored access token; never exposed through any public payload. */
+export async function getBookingAccessToken(id: string): Promise<string | undefined> {
+  const db = await getDB();
+  const r = await db
+    .prepare("SELECT access_token FROM bookings WHERE (id = ? OR booking_id = ?) LIMIT 1")
+    .bind(id, id)
+    .first<Row>();
+  return (r?.access_token as string) || undefined;
+}
+
 function generateBookingCode(): string {
+  // Ambiguous characters (I, O, 0, 1) are excluded so codes survive being
+  // read aloud or retyped.
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
-  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  const bytes = new Uint8Array(5);
+  crypto.getRandomValues(bytes);
+  for (let i = 0; i < 5; i++) code += chars[bytes[i] % chars.length];
   const year = new Date().getFullYear();
   return `DD-${year}-${code}`;
 }
 
+export class SlotTakenError extends Error {
+  constructor() {
+    super("That time slot is no longer available");
+  }
+}
+
+export type CreateBookingInput = Omit<
+  Booking,
+  "id" | "bookingId" | "createdAt" | "updatedAt" | "startUtc" | "endUtc" | "timezone"
+> & { timezone?: string };
+
+/**
+ * Creates a booking and returns the row plus its one-time access token.
+ *
+ * The INSERT is guarded by a NOT EXISTS sub-select that re-checks for an
+ * overlapping live booking for the same listener *inside the same statement*.
+ * D1 has no interactive transactions, so this is what makes two simultaneous
+ * customers racing for the last slot safe: the loser's insert affects 0 rows
+ * and throws SlotTakenError instead of silently double-booking. The unique
+ * partial index idx_bookings_live_slot is the second line of defence.
+ */
 export async function createBooking(
-  data: Omit<Booking, "id" | "bookingId" | "createdAt" | "updatedAt">
-): Promise<Booking> {
+  data: CreateBookingInput
+): Promise<{ booking: Booking; accessToken: string }> {
   const db = await getDB();
-  const id = newId("bk");
-  const bookingId = generateBookingCode();
+  const timezone = data.timezone || DEFAULT_TIMEZONE;
   const ts = nowIso();
-  await db
-    .prepare(
-      `INSERT INTO bookings (id, booking_id, customer_id, customer_nickname, package_id, package_name, service_type, duration, listener_id, listener_name, date, time, amount, currency, payment_status, booking_status, payment_screenshot, conversation_preference, language, notes, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    )
-    .bind(
-      id,
-      bookingId,
-      data.customerId || null,
-      data.customerNickname,
-      data.packageId,
-      data.packageName,
-      data.serviceType,
-      data.duration,
-      data.listenerId,
-      data.listenerName,
-      data.date,
-      data.time,
-      data.amount,
-      data.currency,
-      data.paymentStatus,
-      data.bookingStatus,
-      data.paymentScreenshot || null,
-      data.conversationPreference || null,
-      data.language || null,
-      data.notes || null,
-      ts,
-      ts
-    )
-    .run();
-  return { ...data, id, bookingId, createdAt: ts, updatedAt: ts };
+  const accessToken = generateAccessToken();
+
+  const startMinutes = toMinutes(data.time);
+  if (Number.isNaN(startMinutes)) throw new Error("Invalid booking time");
+  const endMinutes = startMinutes + data.duration;
+
+  const startUtc = zonedToUtc(data.date, data.time, timezone);
+  const endUtc = new Date(startUtc.getTime() + data.duration * 60000);
+
+  // Retry only on booking-code collision, which is astronomically unlikely but
+  // cheap to handle; a slot clash is not retried, it is reported.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const id = newId("bk");
+    const bookingId = generateBookingCode();
+
+    const res = await db
+      .prepare(
+        `INSERT INTO bookings (
+            id, booking_id, customer_id, customer_nickname, package_id, package_name,
+            service_type, duration, listener_id, listener_name, date, time, amount, currency,
+            payment_status, booking_status, payment_screenshot, payment_screenshot_key,
+            conversation_preference, language, language_custom, timezone, start_utc, end_utc,
+            access_token, notes, created_at, updated_at
+          )
+          SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM bookings b
+             WHERE b.listener_id = ?
+               AND b.date = ?
+               AND b.deleted_at IS NULL
+               AND b.booking_status NOT IN ('cancelled','refunded')
+               AND ? < (CAST(substr(b.time,1,2) AS INTEGER) * 60 + CAST(substr(b.time,4,2) AS INTEGER) + b.duration)
+               AND ? > (CAST(substr(b.time,1,2) AS INTEGER) * 60 + CAST(substr(b.time,4,2) AS INTEGER))
+          )`
+      )
+      .bind(
+        id,
+        bookingId,
+        data.customerId || null,
+        data.customerNickname,
+        data.packageId,
+        data.packageName,
+        data.serviceType,
+        data.duration,
+        data.listenerId,
+        data.listenerName,
+        data.date,
+        data.time,
+        data.amount,
+        data.currency,
+        data.paymentStatus,
+        data.bookingStatus,
+        data.paymentScreenshot || null,
+        data.paymentScreenshotKey || null,
+        data.conversationPreference || null,
+        data.language || null,
+        data.languageCustom || null,
+        timezone,
+        startUtc.toISOString(),
+        endUtc.toISOString(),
+        accessToken,
+        data.notes || null,
+        ts,
+        ts,
+        // NOT EXISTS guard params
+        data.listenerId,
+        data.date,
+        startMinutes,
+        endMinutes
+      )
+      .run()
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        // Unique index hit: either a code collision (retry) or the live-slot
+        // guard (do not retry).
+        if (/idx_bookings_live_slot/.test(message)) throw new SlotTakenError();
+        if (/UNIQUE/i.test(message)) return null;
+        throw err;
+      });
+
+    if (res === null) continue; // booking-code collision, try a new code
+
+    if ((res.meta?.changes ?? 0) === 0) throw new SlotTakenError();
+
+    return {
+      booking: {
+        ...data,
+        id,
+        bookingId,
+        timezone,
+        startUtc: startUtc.toISOString(),
+        endUtc: endUtc.toISOString(),
+        createdAt: ts,
+        updatedAt: ts,
+      },
+      accessToken,
+    };
+  }
+
+  throw new Error("Could not allocate a unique booking ID. Please try again.");
 }
 
 export async function updateBooking(id: string, data: Partial<Booking>): Promise<Booking | null> {
-  const existing = await getBookingById(id);
+  const existing = await getBookingById(id, { includeArchived: true });
   if (!existing) return null;
   const merged = { ...existing, ...data, updatedAt: nowIso() };
+
+  // Keep the absolute session bounds in step with any date/time/duration edit.
+  const timezone = merged.timezone || DEFAULT_TIMEZONE;
+  const startUtc = zonedToUtc(merged.date, merged.time, timezone);
+  const endUtc = new Date(startUtc.getTime() + (merged.duration || 0) * 60000);
+  merged.startUtc = startUtc.toISOString();
+  merged.endUtc = endUtc.toISOString();
+
   const db = await getDB();
   await db
     .prepare(
-      `UPDATE bookings SET customer_nickname=?, package_id=?, package_name=?, service_type=?, duration=?, listener_id=?, listener_name=?, date=?, time=?, amount=?, currency=?, payment_status=?, booking_status=?, payment_screenshot=?, conversation_preference=?, language=?, notes=?, updated_at=? WHERE id=?`
+      `UPDATE bookings SET customer_nickname=?, package_id=?, package_name=?, service_type=?, duration=?, listener_id=?, listener_name=?, date=?, time=?, amount=?, currency=?, payment_status=?, booking_status=?, payment_screenshot=?, payment_screenshot_key=?, conversation_preference=?, language=?, language_custom=?, google_meet_link=?, meet_link_updated_at=?, timezone=?, start_utc=?, end_utc=?, notes=?, updated_at=? WHERE id=?`
     )
     .bind(
       merged.customerNickname,
@@ -580,8 +833,15 @@ export async function updateBooking(id: string, data: Partial<Booking>): Promise
       merged.paymentStatus,
       merged.bookingStatus,
       merged.paymentScreenshot || null,
+      merged.paymentScreenshotKey || null,
       merged.conversationPreference || null,
       merged.language || null,
+      merged.languageCustom || null,
+      merged.googleMeetLink || null,
+      merged.meetLinkUpdatedAt || null,
+      timezone,
+      merged.startUtc,
+      merged.endUtc,
       merged.notes || null,
       merged.updatedAt,
       existing.id
@@ -598,59 +858,227 @@ export async function updateBookingStatus(
   return updateBooking(id, { bookingStatus, ...(paymentStatus ? { paymentStatus } : {}) });
 }
 
-// ============================================================
-// Availability
-// ============================================================
-
-const AVAILABILITY_TIMES = ["19:00", "19:30", "20:00", "20:30", "21:00"];
-const AVAILABILITY_DAYS_AHEAD = 14;
-
-/** Ensures slots exist for the next N days for every active listener. Cheap no-op if already present. */
-export async function ensureAvailabilitySeeded(): Promise<void> {
-  const db = await getDB();
-  const listeners = await getListeners(true);
-  const today = new Date();
-  const stmts: D1PreparedStatement[] = [];
-  for (let d = 1; d <= AVAILABILITY_DAYS_AHEAD; d++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + d);
-    const dateStr = date.toISOString().slice(0, 10);
-    for (const listener of listeners) {
-      for (const time of AVAILABILITY_TIMES) {
-        const id = `avail-${listener.id}-${dateStr}-${time}`;
-        stmts.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO availability_slots (id, listener_id, date, time, available, booked) VALUES (?,?,?,?,1,0)`
-            )
-            .bind(id, listener.id, dateStr, time)
-        );
-      }
-    }
-  }
-  if (stmts.length) await db.batch(stmts);
+/** Save, update, or clear the Google Meet link for one specific booking. */
+export async function setBookingMeetLink(id: string, link: string | null): Promise<Booking | null> {
+  return updateBooking(id, {
+    googleMeetLink: link || undefined,
+    meetLinkUpdatedAt: link ? nowIso() : undefined,
+  });
 }
 
-export async function getAvailability(date?: string, listenerId?: string): Promise<AvailabilitySlot[]> {
-  await ensureAvailabilitySeeded();
+/**
+ * Archive (soft-delete) a booking: it leaves normal booking history, stops
+ * resolving on the customer status page, and releases its slot back to
+ * availability — but the row is retained for business/accounting history.
+ */
+export async function archiveBooking(id: string, adminEmail: string): Promise<Booking | null> {
+  const existing = await getBookingById(id, { includeArchived: true });
+  if (!existing || existing.deletedAt) return null;
   const db = await getDB();
-  let q = "SELECT * FROM availability_slots WHERE available = 1 AND booked = 0";
+  const ts = nowIso();
+  await db
+    .prepare("UPDATE bookings SET deleted_at=?, deleted_by=?, updated_at=? WHERE id=?")
+    .bind(ts, adminEmail, ts, existing.id)
+    .run();
+  return { ...existing, deletedAt: ts, deletedBy: adminEmail, updatedAt: ts };
+}
+
+export async function restoreBooking(id: string): Promise<Booking | null> {
+  const existing = await getBookingById(id, { includeArchived: true });
+  if (!existing || !existing.deletedAt) return null;
+  const db = await getDB();
+  const ts = nowIso();
+  await db
+    .prepare("UPDATE bookings SET deleted_at=NULL, deleted_by=NULL, updated_at=? WHERE id=?")
+    .bind(ts, existing.id)
+    .run();
+  return { ...existing, deletedAt: undefined, deletedBy: undefined, updatedAt: ts };
+}
+
+/** Permanent removal, only reachable from an already password-confirmed admin action. */
+export async function purgeBooking(id: string): Promise<{ ok: boolean; screenshotKey?: string }> {
+  const existing = await getBookingById(id, { includeArchived: true });
+  if (!existing) return { ok: false };
+  const db = await getDB();
+  const res = await db.prepare("DELETE FROM bookings WHERE id = ?").bind(existing.id).run();
+  return { ok: (res.meta?.changes ?? 0) > 0, screenshotKey: existing.paymentScreenshotKey };
+}
+
+/** Server-side verification of the signed-in admin's own password. */
+export async function verifyAdminPassword(adminId: string, password: string): Promise<boolean> {
+  if (!password) return false;
+  const db = await getDB();
+  const row = await db
+    .prepare("SELECT password_hash FROM admin_users WHERE id = ?")
+    .bind(adminId)
+    .first<{ password_hash: string }>();
+  if (!row) return false;
+  const { verifyPassword } = await import("@/lib/auth");
+  return verifyPassword(password, row.password_hash);
+}
+
+// ============================================================
+// Availability windows (admin-controlled booking slots)
+// ============================================================
+
+export async function getAvailabilityWindows(params: {
+  listenerId?: string;
+  from?: string;
+  to?: string;
+} = {}): Promise<AvailabilityWindow[]> {
+  const db = await getDB();
+  const clauses: string[] = [];
   const binds: string[] = [];
-  if (date) {
-    q += " AND date = ?";
-    binds.push(date);
+  if (params.listenerId) {
+    clauses.push("listener_id = ?");
+    binds.push(params.listenerId);
   }
-  if (listenerId) {
-    q += " AND listener_id = ?";
-    binds.push(listenerId);
+  if (params.from) {
+    clauses.push("date >= ?");
+    binds.push(params.from);
   }
-  const { results } = await db.prepare(q).bind(...binds).all<Row>();
-  return (results || []).map(rowToAvailability);
+  if (params.to) {
+    clauses.push("date <= ?");
+    binds.push(params.to);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM availability_windows ${where} ORDER BY date ASC, start_time ASC`
+    )
+    .bind(...binds)
+    .all<Row>();
+  return (results || []).map(rowToWindow);
 }
 
-export async function markSlotBooked(slotId: string): Promise<void> {
+export async function getAvailabilityWindowById(id: string): Promise<AvailabilityWindow | undefined> {
   const db = await getDB();
-  await db.prepare("UPDATE availability_slots SET booked = 1 WHERE id = ?").bind(slotId).run();
+  const r = await db.prepare("SELECT * FROM availability_windows WHERE id = ?").bind(id).first<Row>();
+  return r ? rowToWindow(r) : undefined;
+}
+
+export async function createAvailabilityWindow(
+  data: Omit<AvailabilityWindow, "id" | "createdAt" | "updatedAt">
+): Promise<AvailabilityWindow> {
+  const db = await getDB();
+  const id = newId("win");
+  const ts = nowIso();
+  await db
+    .prepare(
+      `INSERT INTO availability_windows (id, listener_id, date, start_time, end_time, kind, timezone, note, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    )
+    .bind(
+      id,
+      data.listenerId,
+      data.date,
+      data.startTime,
+      data.endTime,
+      data.kind,
+      data.timezone || DEFAULT_TIMEZONE,
+      data.note || null,
+      ts,
+      ts
+    )
+    .run();
+  return { ...data, id, createdAt: ts, updatedAt: ts };
+}
+
+export async function updateAvailabilityWindow(
+  id: string,
+  data: Partial<AvailabilityWindow>
+): Promise<AvailabilityWindow | null> {
+  const existing = await getAvailabilityWindowById(id);
+  if (!existing) return null;
+  const merged = { ...existing, ...data, updatedAt: nowIso() };
+  const db = await getDB();
+  await db
+    .prepare(
+      `UPDATE availability_windows SET listener_id=?, date=?, start_time=?, end_time=?, kind=?, timezone=?, note=?, updated_at=? WHERE id=?`
+    )
+    .bind(
+      merged.listenerId,
+      merged.date,
+      merged.startTime,
+      merged.endTime,
+      merged.kind,
+      merged.timezone || DEFAULT_TIMEZONE,
+      merged.note || null,
+      merged.updatedAt,
+      id
+    )
+    .run();
+  return merged;
+}
+
+export async function deleteAvailabilityWindow(id: string): Promise<boolean> {
+  const db = await getDB();
+  const res = await db.prepare("DELETE FROM availability_windows WHERE id = ?").bind(id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+/** Live bookings for a listener/date — used by the admin availability view. */
+export async function getBookingsForListenerDate(listenerId: string, date: string): Promise<Booking[]> {
+  const db = await getDB();
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM bookings
+        WHERE listener_id = ? AND date = ? AND deleted_at IS NULL
+          AND booking_status NOT IN ('cancelled','refunded')
+        ORDER BY time ASC`
+    )
+    .bind(listenerId, date)
+    .all<Row>();
+  return (results || []).map(rowToBooking);
+}
+
+// ============================================================
+// Audit log
+// ============================================================
+
+export async function logAudit(entry: {
+  adminId?: string;
+  adminEmail?: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  summary: string;
+  details?: unknown;
+}): Promise<void> {
+  try {
+    const db = await getDB();
+    await db
+      .prepare(
+        `INSERT INTO audit_log (id, admin_id, admin_email, action, entity_type, entity_id, summary, details, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      )
+      .bind(
+        newId("aud"),
+        entry.adminId || null,
+        entry.adminEmail || null,
+        entry.action,
+        entry.entityType,
+        entry.entityId || null,
+        entry.summary,
+        entry.details === undefined ? null : JSON.stringify(entry.details),
+        nowIso()
+      )
+      .run();
+  } catch (err) {
+    // Audit logging must never break the action it is recording.
+    console.error("audit log write failed", err);
+  }
+}
+
+export async function getAuditLog(limit = 100, entityType?: string): Promise<AuditEntry[]> {
+  const db = await getDB();
+  const capped = Math.min(Math.max(limit, 1), 500);
+  const q = entityType
+    ? "SELECT * FROM audit_log WHERE entity_type = ? ORDER BY created_at DESC LIMIT ?"
+    : "SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?";
+  const binds = entityType ? [entityType, capped] : [capped];
+  const { results } = await db.prepare(q).bind(...binds).all<Row>();
+  return (results || []).map(rowToAuditEntry);
 }
 
 // ============================================================
@@ -847,6 +1275,89 @@ export async function getBanners(publishedOnly = true): Promise<Banner[]> {
   return (results || []).map(rowToBanner);
 }
 
+export async function getBannerById(id: string): Promise<Banner | undefined> {
+  const db = await getDB();
+  const r = await db.prepare("SELECT * FROM banners WHERE id = ?").bind(id).first<Row>();
+  return r ? rowToBanner(r) : undefined;
+}
+
+export async function createBanner(data: Omit<Banner, "id" | "updatedAt">): Promise<Banner> {
+  const db = await getDB();
+  const id = newId("ban");
+  const ts = nowIso();
+  await db
+    .prepare(
+      `INSERT INTO banners (id, heading, description, cta_text, cta_url, media_type, image_url, video_url, poster_url, video_autoplay, video_muted, video_loop, video_controls, published, display_order, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    )
+    .bind(
+      id,
+      data.heading,
+      data.description,
+      data.ctaText || null,
+      data.ctaUrl || null,
+      data.mediaType || "none",
+      data.imageUrl || null,
+      data.videoUrl || null,
+      data.posterUrl || null,
+      data.videoAutoplay ? 1 : 0,
+      data.videoMuted ? 1 : 0,
+      data.videoLoop ? 1 : 0,
+      data.videoControls ? 1 : 0,
+      data.published ? 1 : 0,
+      data.displayOrder,
+      ts
+    )
+    .run();
+  return { ...data, id, updatedAt: ts };
+}
+
+export async function updateBanner(id: string, data: Partial<Banner>): Promise<Banner | null> {
+  const existing = await getBannerById(id);
+  if (!existing) return null;
+  const merged = { ...existing, ...data, updatedAt: nowIso() };
+  const db = await getDB();
+  await db
+    .prepare(
+      `UPDATE banners SET heading=?, description=?, cta_text=?, cta_url=?, media_type=?, image_url=?, video_url=?, poster_url=?, video_autoplay=?, video_muted=?, video_loop=?, video_controls=?, published=?, display_order=?, updated_at=? WHERE id=?`
+    )
+    .bind(
+      merged.heading,
+      merged.description,
+      merged.ctaText || null,
+      merged.ctaUrl || null,
+      merged.mediaType || "none",
+      merged.imageUrl || null,
+      merged.videoUrl || null,
+      merged.posterUrl || null,
+      merged.videoAutoplay ? 1 : 0,
+      // Autoplay in browsers only works muted; never persist an unmuted autoplay banner.
+      merged.videoAutoplay || merged.videoMuted ? 1 : 0,
+      merged.videoLoop ? 1 : 0,
+      merged.videoControls ? 1 : 0,
+      merged.published ? 1 : 0,
+      merged.displayOrder,
+      merged.updatedAt,
+      id
+    )
+    .run();
+  return { ...merged, videoMuted: merged.videoAutoplay ? true : merged.videoMuted };
+}
+
+export async function deleteBanner(id: string): Promise<boolean> {
+  const db = await getDB();
+  const res = await db.prepare("DELETE FROM banners WHERE id = ?").bind(id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+export async function reorderBanners(order: string[]): Promise<void> {
+  const db = await getDB();
+  const stmts = order.map((id, index) =>
+    db.prepare("UPDATE banners SET display_order = ?, updated_at = ? WHERE id = ?").bind(index + 1, nowIso(), id)
+  );
+  if (stmts.length) await db.batch(stmts);
+}
+
 export async function getCTABlocks(enabledOnly = true): Promise<CTABlock[]> {
   const db = await getDB();
   const q = enabledOnly
@@ -856,6 +1367,40 @@ export async function getCTABlocks(enabledOnly = true): Promise<CTABlock[]> {
   return (results || []).map(rowToCTABlock);
 }
 
+// ---------- About page ----------
+
+export async function getAboutPage(): Promise<AboutPage> {
+  const db = await getDB();
+  const r = await db.prepare("SELECT * FROM about_page WHERE id = 'default'").first<Row>();
+  if (!r) {
+    return {
+      heading: "About",
+      description: "A private paid conversation service focused on listening and being heard.",
+      published: true,
+    };
+  }
+  return {
+    heading: r.heading as string,
+    description: r.description as string,
+    heroImage: (r.hero_image as string) || undefined,
+    published: !!r.published,
+  };
+}
+
+export async function updateAboutPage(data: Partial<AboutPage>): Promise<AboutPage> {
+  const db = await getDB();
+  const current = await getAboutPage();
+  const merged = { ...current, ...data };
+  await db
+    .prepare(
+      `INSERT INTO about_page (id, heading, description, hero_image, published) VALUES ('default',?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET heading=excluded.heading, description=excluded.description, hero_image=excluded.hero_image, published=excluded.published`
+    )
+    .bind(merged.heading, merged.description, merged.heroImage || null, merged.published ? 1 : 0)
+    .run();
+  return merged;
+}
+
 export async function getAboutSections(publishedOnly = true): Promise<AboutSection[]> {
   const db = await getDB();
   const q = publishedOnly
@@ -863,6 +1408,18 @@ export async function getAboutSections(publishedOnly = true): Promise<AboutSecti
     : "SELECT * FROM about_sections ORDER BY display_order ASC";
   const { results } = await db.prepare(q).all<Row>();
   return (results || []).map(rowToAboutSection);
+}
+
+export async function createAboutSection(data: Omit<AboutSection, "id">): Promise<AboutSection> {
+  const db = await getDB();
+  const id = newId("about");
+  await db
+    .prepare(
+      `INSERT INTO about_sections (id, title, content, image_url, published, display_order) VALUES (?,?,?,?,?,?)`
+    )
+    .bind(id, data.title, data.content, data.imageUrl || null, data.published ? 1 : 0, data.displayOrder)
+    .run();
+  return { ...data, id };
 }
 
 export async function updateAboutSection(id: string, data: Partial<AboutSection>): Promise<AboutSection | null> {
@@ -875,6 +1432,20 @@ export async function updateAboutSection(id: string, data: Partial<AboutSection>
     .bind(merged.title, merged.content, merged.imageUrl || null, merged.published ? 1 : 0, merged.displayOrder, id)
     .run();
   return merged;
+}
+
+export async function deleteAboutSection(id: string): Promise<boolean> {
+  const db = await getDB();
+  const res = await db.prepare("DELETE FROM about_sections WHERE id = ?").bind(id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+export async function reorderAboutSections(order: string[]): Promise<void> {
+  const db = await getDB();
+  const stmts = order.map((id, index) =>
+    db.prepare("UPDATE about_sections SET display_order = ? WHERE id = ?").bind(index + 1, id)
+  );
+  if (stmts.length) await db.batch(stmts);
 }
 
 // ============================================================
@@ -904,7 +1475,16 @@ export async function createMediaItem(item: {
     )
     .bind(id, item.name, item.url, item.r2Key || null, item.type, item.size, item.mimeType, ts)
     .run();
-  return { id, name: item.name, url: item.url, type: item.type, size: item.size, mimeType: item.mimeType, createdAt: ts };
+  return {
+    id,
+    name: item.name,
+    url: item.url,
+    r2Key: item.r2Key,
+    type: item.type,
+    size: item.size,
+    mimeType: item.mimeType,
+    createdAt: ts,
+  };
 }
 
 export async function deleteMediaItem(id: string): Promise<{ ok: boolean; r2Key?: string }> {
@@ -927,6 +1507,13 @@ export async function getDashboardStats() {
   const reviewsCountRow = await db
     .prepare("SELECT COUNT(*) as c FROM reviews WHERE status = 'published'")
     .first<Row>();
+  const archivedRow = await db
+    .prepare("SELECT COUNT(*) as c FROM bookings WHERE deleted_at IS NOT NULL")
+    .first<Row>();
+  const openWindowsRow = await db
+    .prepare("SELECT COUNT(*) as c FROM availability_windows WHERE kind = 'open' AND date >= ?")
+    .bind(new Date().toISOString().slice(0, 10))
+    .first<Row>();
 
   return {
     totalCustomers: (customerCountRow?.c as number) || 0,
@@ -936,8 +1523,13 @@ export async function getDashboardStats() {
     pendingPayments: bookings.filter((b) =>
       ["payment_pending", "payment_verification_pending"].includes(b.bookingStatus)
     ).length,
+    awaitingMeetLink: bookings.filter(
+      (b) => b.paymentStatus === "verified" && !b.googleMeetLink && !["completed", "cancelled", "refunded"].includes(b.bookingStatus)
+    ).length,
     revenue: bookings.filter((b) => b.paymentStatus === "verified").reduce((sum, b) => sum + b.amount, 0),
     activePackages: packages.filter((p) => p.active).length,
     reviewsCount: (reviewsCountRow?.c as number) || 0,
+    archivedBookings: (archivedRow?.c as number) || 0,
+    openAvailabilityWindows: (openWindowsRow?.c as number) || 0,
   };
 }

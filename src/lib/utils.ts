@@ -33,9 +33,6 @@ export function formatTime(time: string): string {
   return `${hour}:${m.toString().padStart(2, "0")} ${period}`;
 }
 
-export function generateBookingId(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return `DD-2026-${code}`;
-}
+// Booking IDs are generated server-side in createBooking() and never change
+// once issued. The old client-side generateBookingId() helper was removed so
+// nothing can mint a throwaway ID in the browser.

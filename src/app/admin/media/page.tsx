@@ -2,7 +2,9 @@
 
 import { useRequireAdmin } from "@/lib/use-require-admin";
 import { useEffect, useRef, useState } from "react";
-import Button from "@/components/ui/Button";
+import AdminButton from "@/components/admin/AdminButton";
+import { ConfirmDialog } from "@/components/admin/AdminDialog";
+import { AdminPageHeader, EmptyState, Notice } from "@/components/admin/AdminUI";
 import type { MediaItem } from "@/types";
 
 export default function AdminMediaPage() {
@@ -11,6 +13,9 @@ export default function AdminMediaPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [copied, setCopied] = useState("");
 
   const load = () => {
     fetch("/api/admin/media")
@@ -41,26 +46,36 @@ export default function AdminMediaPage() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this media item? This cannot be undone.")) return;
-    await fetch(`/api/admin/media/${id}`, { method: "DELETE" });
-    load();
+  const remove = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try {
+      await fetch(`/api/admin/media/${deleteTarget.id}`, { method: "DELETE" });
+      setDeleteTarget(null);
+      load();
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
-  const copyUrl = (url: string) => {
-    navigator.clipboard?.writeText(new URL(url, window.location.origin).toString());
+  const copyUrl = (item: MediaItem) => {
+    navigator.clipboard?.writeText(new URL(item.url, window.location.origin).toString());
+    setCopied(item.id);
+    setTimeout(() => setCopied(""), 1500);
   };
 
 
   if (!authChecked) return null;
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Media Library</h1>
+      <AdminPageHeader
+        title="Media Library"
+        description="Images and videos up to 8MB, stored in your R2 bucket."
+        actions={
         <label>
-          <Button size="sm" disabled={uploading} onClick={() => fileInput.current?.click()}>
-            {uploading ? "Uploading…" : "+ Upload"}
-          </Button>
+          <AdminButton size="sm" loading={uploading} onClick={() => fileInput.current?.click()}>
+            {uploading ? "Uploading…" : "Upload"}
+          </AdminButton>
           <input
             ref={fileInput}
             type="file"
@@ -70,23 +85,15 @@ export default function AdminMediaPage() {
             onChange={(e) => upload(e.target.files)}
           />
         </label>
-      </div>
+        }
+      />
 
-      {error && (
-        <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
-          {error}
-        </div>
-      )}
-
-      <p className="text-xs text-[var(--color-muted)]">
-        Images and videos up to 8MB. Uploaded files are stored in your R2 bucket. Copy a URL to use it
-        elsewhere in the CMS (packages, reviews, blog posts, logos).
-      </p>
+      {error && <Notice tone="error">{error}</Notice>}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         {media.map((m) => (
-          <div key={m.id} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] overflow-hidden">
-            <div className="aspect-square bg-[var(--color-background)] flex items-center justify-center">
+          <div key={m.id} className="admin-card overflow-hidden">
+            <div className="flex aspect-square items-center justify-center bg-[var(--admin-surface-2)]">
               {m.type === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={m.url} alt={m.name} className="w-full h-full object-cover" />
@@ -96,24 +103,38 @@ export default function AdminMediaPage() {
             </div>
             <div className="p-2">
               <p className="text-xs truncate" title={m.name}>{m.name}</p>
-              <p className="text-[10px] text-[var(--color-muted)]">{(m.size / 1024).toFixed(0)} KB</p>
-              <div className="flex gap-1 mt-2">
-                <Button size="sm" variant="outline" className="flex-1 !px-1 !py-1 text-[10px]" onClick={() => copyUrl(m.url)}>
-                  Copy URL
-                </Button>
-                <Button size="sm" variant="danger" className="!px-1 !py-1 text-[10px]" onClick={() => remove(m.id)}>
+              <p className="text-[10px] text-[var(--admin-text-muted)]">{(m.size / 1024).toFixed(0)} KB</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <AdminButton size="sm" variant="secondary" className="flex-1 !px-2" onClick={() => copyUrl(m)}>
+                  {copied === m.id ? "Copied" : "Copy URL"}
+                </AdminButton>
+                <AdminButton size="sm" variant="destructive" className="!px-2" onClick={() => setDeleteTarget(m)}>
                   Delete
-                </Button>
+                </AdminButton>
               </div>
             </div>
           </div>
         ))}
         {media.length === 0 && (
-          <div className="col-span-full rounded-xl border border-dashed border-[var(--color-border)] p-12 text-center text-[var(--color-muted)] text-sm">
-            No media uploaded yet.
+          <div className="col-span-full">
+            <EmptyState
+              title="No media uploaded yet"
+              description="Upload images and videos here, then pick them from any CMS editor."
+            />
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete this file?"
+        description={`${deleteTarget?.name || ""} — anything still pointing at it will lose its image.`}
+        confirmLabel="Delete"
+        destructive
+        busy={deleteBusy}
+        onConfirm={remove}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

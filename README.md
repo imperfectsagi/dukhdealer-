@@ -126,12 +126,22 @@ curl -X POST https://YOUR-DEPLOYMENT-URL/api/admin/setup \
 This only works once — it refuses if an admin account already exists. Then go to
 `/admin/login` and sign in.
 
-### 8. Availability
+### 8. Open your availability
 
-Availability slots are generated automatically, 14 days ahead, the first time anyone
-hits the booking page or the admin availability API — no manual step needed. The seed
-migration deliberately doesn't hardcode calendar dates, since plain SQL can't compute
-"today" at migration time.
+**Nothing is bookable until you open availability.** This is deliberate: the admin
+controls the calendar, not the code.
+
+1. Admin Panel → **Listeners** → approve at least one listener
+2. Admin Panel → **Availability** → choose the listener, a date, a start and end time
+   (e.g. 10:00–13:00), and optionally "repeat for N days"
+3. Customers now see only start times that fit inside that window for the package
+   duration they picked
+
+Slot start times are computed server-side from your windows minus blocks minus existing
+bookings, so a 10:00–13:00 window will never offer 12:30 for a 60-minute package.
+
+Set the timezone your windows are expressed in under Admin → Settings → Site
+(default `Asia/Kolkata`).
 
 ## Media & R2
 
@@ -145,12 +155,36 @@ up but adds a hop. For a high-traffic production site, consider instead:
 
 ## Payment screenshots
 
-Customer payment screenshots are currently stored as base64 data URLs directly in the
-`bookings.payment_screenshot` D1 column (capped at ~3MB per booking in
-`src/app/api/public/bookings/route.ts`). This is the simplest path and keeps the public
-booking flow working without needing an authenticated upload step. If booking volume
-grows, consider switching this to an R2 upload (same pattern as the Media Library) to
-keep D1 row sizes small — D1 has per-row and per-database size considerations at scale.
+Payment proofs are uploaded as real files (multipart) to R2 under the `payments/`
+prefix; `bookings.payment_screenshot` stores the served URL and
+`bookings.payment_screenshot_key` the R2 key. They were previously base64 data URLs
+inside the D1 row, which does not survive a normal phone screenshot.
+
+`payments/` objects are **admin-only**: `/api/media/[key]` requires a valid admin
+session for that prefix and serves them `private, no-store`. They are never included in
+any public API response.
+
+## Booking access and the Google Meet link
+
+There is no customer login, so ownership of a booking is proved with a high-entropy
+access token minted when the booking is created and returned exactly once, in the
+confirmation link (`/booking/DD-2026-XXXXX?k=...`). The browser also keeps a copy in
+`localStorage` so returning to the page on the same device still works.
+
+Requesting a booking without a token still returns **200** with its status — a valid
+Booking ID never 404s — but withholds the nickname, language, conversation preference
+and the Meet link.
+
+The Meet link is attached to the response only when all of these are true:
+
+1. the caller supplied the correct access token
+2. `payment_status = 'verified'` in D1
+3. an admin has actually saved a link on that booking
+4. the current time is inside the join window (10 minutes before the start until
+   15 minutes after the end, using the booking's own timezone)
+
+Admins set the link on the booking detail page. Nothing about payment state or the link
+is inferred client-side.
 
 ## Environment / secrets reference
 
@@ -172,13 +206,52 @@ src/app/api/admin/*       Session-protected CRUD APIs
 src/app/api/public/*      Unauthenticated booking-flow APIs
 src/app/api/media/[key]   Public R2 object read-through
 src/app/admin/*           Admin Panel UI (client components, calls /api/admin/*)
+src/lib/availability.ts   Duration-aware slot computation + clash checks
+src/lib/timezone.ts       Intl-only timezone maths (no Node APIs, Workers-safe)
+src/lib/booking-access.ts Access tokens, join window, Meet-link disclosure rules
+src/components/admin/*    Admin design system: AdminButton, dialogs, form fields
 ```
+
+## Admin Panel on mobile
+
+The Admin Panel is built mobile-first — every section is reachable from the hamburger
+drawer, forms are single-column with 44px targets and 16px inputs (so iOS doesn't zoom),
+long tables become stacked cards below `lg`, and dialogs are capped to the viewport and
+scroll internally.
+
+Admin buttons use `src/components/admin/AdminButton.tsx`, which has semantic variants
+(`primary`, `secondary`, `activate`, `deactivate`, `destructive`, `ghost`) built on fixed
+`--admin-*` tokens in `globals.css`. These are intentionally **independent of the public
+theme**, so changing the site colours can never make admin actions unreadable. The public
+CTA style (`#E76F35` on white) is not available inside the admin.
+
+## Deleting bookings
+
+Admins can delete a booking from its detail page. It requires re-entering the admin
+password, which is verified **server-side** against the signed-in admin's stored hash —
+never in the browser, and never stored. The default action archives (soft-deletes): the
+booking leaves booking history, stops resolving for the customer, and frees its time
+slot, while the row is retained for accounting. Archived bookings can be restored.
+`DELETE ... {"mode":"purge"}` removes the row and its R2 payment proof permanently.
+
+Every sensitive action (payment approval/rejection/refund, Meet-link changes, booking
+deletion, availability, package, banner, logo, theme and CMS edits) writes to
+`audit_log`, viewable at Admin → Audit Log. Customers have no delete capability.
+
+## Caching
+
+The root layout, homepage and public pages are `force-dynamic` and read D1 per request,
+so a CMS change is visible immediately. Logo and favicon URLs carry a `?v=` stamp derived
+from the last save, because browsers cache favicons hard enough to keep showing a
+replaced one. Uploaded CMS media is served `immutable` — safe because each upload gets a
+fresh UUID key, so a replacement is a different URL. Booking, payment and audit responses
+are `private, no-store`.
 
 ## Not yet built (beyond original scope)
 
 This deploy covers the CMS admin panel, D1/R2 persistence, and the booking request flow.
-It does **not** include: the actual chat/voice/video session experience, real payment
-gateway integration (payments are manual UPI + screenshot + admin verification, as the
-original design specified), or customer accounts/login. Those were out of scope for
-what was asked — flagging them here so they're not mistaken for oversights if you go
-looking for them.
+It does **not** include: the actual chat/voice/video session experience (sessions happen
+in Google Meet via the admin-supplied link), real payment gateway integration (payments
+are manual UPI + screenshot + admin verification, as the original design specified), or
+customer accounts/login. Those were out of scope for what was asked — flagging them here
+so they're not mistaken for oversights if you go looking for them.
