@@ -53,7 +53,7 @@ export default async function HomePage() {
           label: site.ctaLabels?.primary || "Book a Private Session",
           href: "/booking",
         }}
-        secondaryCta={{ label: site.ctaLabels?.secondary || "See How It Works", href: "/about" }}
+        secondaryCta={{ label: site.ctaLabels?.secondary || "About Us", href: "/about" }}
         // Homepage-only text colours from Admin > Theme. Each is passed through
         // separately and each falls back to its own theme colour when blank, so
         // one being set never changes the other two. Button colours are not

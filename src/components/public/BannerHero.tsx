@@ -116,15 +116,19 @@ export default function BannerHero({
         >
           {description}
         </p>
-        <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
-          <Link href={ctaHref}>
-            <Button size="lg" className="w-full sm:w-auto">
+        <div className="mt-10 flex flex-row items-center justify-center gap-3 sm:gap-4">
+          <Link href={ctaHref} className="w-auto">
+            <Button size="lg" className="w-auto">
               {ctaLabel}
             </Button>
           </Link>
           {secondaryCta && (
-            <Link href={secondaryCta.href}>
-              <Button size="lg" variant="outline" className="w-full sm:w-auto">
+            <Link href={secondaryCta.href} className="w-auto">
+              <Button
+                size="lg"
+                variant="outline"
+                className="border-[var(--color-foreground)] bg-[var(--color-card)] text-[var(--color-foreground)] hover:bg-[var(--color-card)]"
+              >
                 {secondaryCta.label}
               </Button>
             </Link>
