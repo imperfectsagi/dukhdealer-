@@ -83,7 +83,6 @@ export default function BannerHero({
       {hasMedia && (
         <div
           aria-hidden="true"
-          className="absolute inset-0 bg-[var(--color-background)]/80 backdrop-blur-[1px]"
         />
       )}
 
