@@ -28,6 +28,78 @@ Focus: listening, conversation, talking, being heard.
 > It still works and is actively maintained — but if you start a *new* Cloudflare + Next.js
 > project from scratch later, it's worth checking whether vinext has become the better default.
 
+## Latest update — video focal point, admin section order, simpler reviews
+
+**1. Focal point for VIDEO banners.** Admin Panel → **Banners** → a video banner
+now shows the same focal-point controls as an image banner: *Focal point
+(desktop)* plus the optional **"Use a different focal point on mobile"** toggle.
+You pick on the poster image when one is uploaded, otherwise on the video's own
+first frame, so a video-only banner still gets both points. Saved values persist
+(`banners.focal_x/focal_y` and `focal_x_mobile/focal_y_mobile`) and are applied
+to the live hero: the `<video>` and the `<img>` share the `.hero-media` class and
+the same `--hero-focal` / `--hero-focal-mobile` variables, so the video, its
+poster and the image fallback are always framed identically. The existing image
+focal-point behaviour is unchanged.
+
+**2. Home page section order from the admin panel.** New screen: Admin Panel →
+**Home Sections** (`/admin/home-sections`). Every homepage section is listed with
+↑ / ↓ buttons and a **Save Order** button (plus *Reset to default order*). The
+order is stored in `site_settings.home_section_order` as a JSON array of section
+keys and read by the homepage on every request, so it applies immediately and
+survives refresh. `resolveHomeSectionOrder` in `src/config/home-sections.ts`
+drops unknown keys, removes duplicates and appends any section the saved order
+does not mention — so a future code change can never blank the homepage.
+`HOME_SECTION_ORDER` in that file is now only the default used before an admin
+saves their own.
+
+**3. Review form: no Booking ID / Order ID.** The form is *Rating* (required),
+*Your review (optional)*, *Display name (optional)*, **Submit review** — a
+customer can submit 5 stars and nothing else. `POST /api/public/reviews` now
+takes `{ packageId, rating, text?, displayName? }`; rating is the only required
+field and no booking/order reference is asked for or checked. The package is
+still resolved by its real ID (`packages.id`, verified to exist and be active),
+never by name. Submissions are saved as `draft`, so they appear publicly only
+after an admin publishes them in Admin Panel → Reviews. Empty display name is
+stored as "Guest"; an empty review body renders as stars only.
+
+**4. Package page order.** `/packages/[id]` is now: *Reviews for this package*
+(with the rating summary) → **Write a review** → *Customer reviews*. A customer
+no longer has to scroll past every review to leave one.
+
+**5. Homepage reviews are a preview.** At most **6** published reviews are shown;
+if more exist, a **View all reviews** button appears under them. Each review card
+links to its package, and *View all reviews* goes to that package's page when
+every published review belongs to one package, otherwise to `/packages`, from
+where each package's own reviews are one tap away. Only published reviews are
+ever shown on the homepage.
+
+### Required database migration
+
+```bash
+npx wrangler d1 migrations apply dukh-dealer-db --remote   # --local for dev
+```
+
+`migrations/0006_home_section_order.sql`:
+- adds `site_settings.home_section_order` (default `'[]'` = use the code default)
+- **data correction:** migration 0005 had attached the three *seeded demo*
+  reviews (`rev-001..rev-003`) to packages, which made demo text count towards
+  real package star ratings. 0006 sets their `package_id` back to `NULL`. They
+  are **not deleted** — they still show in the homepage "What people say" strip,
+  and you can deliberately attach any of them to a package again from Admin
+  Panel → Reviews → *Package*. The update is guarded by `booking_id IS NULL`, so
+  genuine customer reviews are never touched.
+
+Nothing else in the database is modified: packages, banners, bookings and real
+reviews are left exactly as they are, and no environment variables were added.
+
+### Build & deploy
+
+```bash
+npm install
+npm run build
+npm run deploy
+```
+
 ## This update — mobile hero, section order, package reviews
 
 Three changes, all additive. Desktop layout, colours, typography, buttons and

@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Info,
   LayoutDashboard,
+  ListOrdered,
   LogOut,
   Menu,
   MessageSquare,
@@ -52,6 +53,7 @@ export const NAV_GROUPS: { title: string; links: NavLink[] }[] = [
     title: "Content",
     links: [
       { href: "/admin/banners", label: "Banners", icon: PanelsTopLeft },
+      { href: "/admin/home-sections", label: "Home Sections", icon: ListOrdered },
       { href: "/admin/about", label: "About Page", icon: Info },
       { href: "/admin/blog", label: "Blog", icon: FileText },
       { href: "/admin/faq", label: "FAQ", icon: HelpCircle },

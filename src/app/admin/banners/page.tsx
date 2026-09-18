@@ -53,23 +53,29 @@ const EMPTY: Draft = {
  */
 function HeroFocalControls({
   imageUrl,
+  videoUrl,
   draft,
   setDraft,
 }: {
-  imageUrl: string;
+  /** Still image to pick on: the banner image, or a video banner's poster. */
+  imageUrl?: string;
+  /** Video to pick on when a video banner has no poster uploaded. */
+  videoUrl?: string;
   draft: Draft;
   setDraft: (d: Draft) => void;
 }) {
   const mobileSet = draft.focalXMobile != null || draft.focalYMobile != null;
+  const mediaWord = !imageUrl && videoUrl ? "video" : "image";
   return (
     <div className="space-y-4">
       <FocalPointPicker
         imageUrl={imageUrl}
+        videoUrl={videoUrl}
         focalX={draft.focalX}
         focalY={draft.focalY}
         onChange={(focal) => setDraft({ ...draft, ...focal })}
         label="Focal point (desktop)"
-        hint="Click the image to pin the part that must stay visible. Used for both the image and the video hero."
+        hint={`Click the ${mediaWord} to pin the part that must stay visible. The image and the video hero share this point, so both are framed the same.`}
         previewLabel="Desktop crop preview (wide screen)"
         preview="wide"
       />
@@ -90,13 +96,14 @@ function HeroFocalControls({
       {mobileSet && (
         <FocalPointPicker
           imageUrl={imageUrl}
+          videoUrl={videoUrl}
           focalX={draft.focalXMobile ?? draft.focalX}
           focalY={draft.focalYMobile ?? draft.focalY}
           onChange={(focal) =>
             setDraft({ ...draft, focalXMobile: focal.focalX, focalYMobile: focal.focalY })
           }
           label="Focal point (mobile)"
-          hint="Click the image to pin the part that must stay visible in the full-height phone hero."
+          hint={`Click the ${mediaWord} to pin the part that must stay visible in the full-height phone hero.`}
           previewLabel="Mobile crop preview (full-height phone hero)"
           preview="tall"
         />
@@ -306,8 +313,21 @@ export default function AdminBannersPage() {
                   onChange={(url) => setDraft({ ...draft, posterUrl: url })}
                   hint="shown while loading and if the video fails"
                 />
-                {draft.posterUrl && (
-                  <HeroFocalControls imageUrl={draft.posterUrl} draft={draft} setDraft={setDraft} />
+                {/* Focal point for VIDEO banners. Pick on the poster when one
+                    is uploaded, otherwise on the video's own first frame, so a
+                    video-only banner still gets desktop + mobile focal points. */}
+                {(draft.posterUrl || draft.videoUrl) && (
+                  <HeroFocalControls
+                    imageUrl={draft.posterUrl}
+                    videoUrl={draft.videoUrl}
+                    draft={draft}
+                    setDraft={setDraft}
+                  />
+                )}
+                {!draft.posterUrl && !draft.videoUrl && (
+                  <p className="text-xs text-[var(--admin-text-muted)]">
+                    Upload a video (or a poster image) to set the focal point.
+                  </p>
                 )}
                 <ToggleField
                   label="Autoplay"

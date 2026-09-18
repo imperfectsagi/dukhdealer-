@@ -5,7 +5,7 @@ import { FieldLabel } from "@/components/admin/AdminUI";
 import AdminButton from "@/components/admin/AdminButton";
 
 /**
- * Focal point picker for banner images.
+ * Focal point picker for banner images AND banner videos.
  *
  * The admin clicks (or taps) anywhere on the image; we store where they hit as
  * a percentage of the image's own width and height. The public hero renders
@@ -20,6 +20,7 @@ import AdminButton from "@/components/admin/AdminButton";
  */
 export default function FocalPointPicker({
   imageUrl,
+  videoUrl,
   focalX,
   focalY,
   onChange,
@@ -29,7 +30,10 @@ export default function FocalPointPicker({
   /** Aspect of the crop preview. "tall" matches the full-height mobile hero. */
   preview = "tall",
 }: {
-  imageUrl: string;
+  /** Still image to pick on (banner image, or a video's poster). */
+  imageUrl?: string;
+  /** Video to pick on. Used when there is no poster, so video-only banners still get a picker. */
+  videoUrl?: string;
   focalX: number;
   focalY: number;
   onChange: (focal: { focalX: number; focalY: number }) => void;
@@ -53,6 +57,16 @@ export default function FocalPointPicker({
       focalY: clamp(((clientY - rect.top) / rect.height) * 100),
     });
   };
+
+  // The picker surface: a still image when one exists, otherwise the video
+  // itself (first frame). Either way the click maths is identical, because the
+  // element fills the same frame.
+  const useVideo = !imageUrl && !!videoUrl;
+  // #t=0.1 nudges the browser into decoding and showing a real first frame
+  // instead of a blank box while only metadata is preloaded.
+  const videoSrc = videoUrl ? `${videoUrl}#t=0.1` : undefined;
+
+  if (!imageUrl && !videoUrl) return null;
 
   return (
     <div className="min-w-0">
@@ -94,13 +108,24 @@ export default function FocalPointPicker({
           onChange({ focalX: clamp(focalX + move[0]), focalY: clamp(focalY + move[1]) });
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageUrl}
-          alt="Banner image — click to set the focal point"
-          draggable={false}
-          className="pointer-events-none block max-h-72 w-full select-none object-contain"
-        />
+        {useVideo ? (
+          <video
+            src={videoSrc}
+            muted
+            playsInline
+            preload="metadata"
+            aria-label="Banner video — click to set the focal point"
+            className="pointer-events-none block max-h-72 w-full select-none object-contain"
+          />
+        ) : (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={imageUrl}
+            alt="Banner image — click to set the focal point"
+            draggable={false}
+            className="pointer-events-none block max-h-72 w-full select-none object-contain"
+          />
+        )}
 
         {/* Crosshair marker */}
         <div
@@ -147,14 +172,26 @@ export default function FocalPointPicker({
             preview === "tall" ? "w-40" : "w-full max-w-sm"
           }`}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imageUrl}
-            alt=""
-            aria-hidden="true"
-            className={`w-full object-cover ${preview === "tall" ? "h-72" : "h-28"}`}
-            style={{ objectPosition: `${focalX}% ${focalY}%` }}
-          />
+          {useVideo ? (
+            <video
+              src={videoSrc}
+              muted
+              playsInline
+              preload="metadata"
+              aria-hidden="true"
+              className={`w-full object-cover ${preview === "tall" ? "h-72" : "h-28"}`}
+              style={{ objectPosition: `${focalX}% ${focalY}%` }}
+            />
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={imageUrl}
+              alt=""
+              aria-hidden="true"
+              className={`w-full object-cover ${preview === "tall" ? "h-72" : "h-28"}`}
+              style={{ objectPosition: `${focalX}% ${focalY}%` }}
+            />
+          )}
         </div>
       </div>
     </div>

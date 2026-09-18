@@ -303,7 +303,19 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     instagramCtaText:
       (r.instagram_cta_text as string) || "Follow Dukh Dealer on Instagram",
     timezone: (r.timezone as string) || DEFAULT_TIMEZONE,
+    homeSectionOrder: safeJsonArray(r.home_section_order),
   };
+}
+
+/** Parse a JSON string column into a string[]; never throws, always an array. */
+function safeJsonArray(value: unknown): string[] {
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings> {
@@ -312,7 +324,7 @@ export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<S
   const merged = { ...current, ...data };
   await db
     .prepare(
-      `UPDATE site_settings SET website_name=?, tagline=?, description=?, email=?, instagram_url=?, social_links=?, footer_text=?, navigation_labels=?, cta_labels=?, instagram_enabled=?, instagram_cta_text=?, timezone=? WHERE id='default'`
+      `UPDATE site_settings SET website_name=?, tagline=?, description=?, email=?, instagram_url=?, social_links=?, footer_text=?, navigation_labels=?, cta_labels=?, instagram_enabled=?, instagram_cta_text=?, timezone=?, home_section_order=? WHERE id='default'`
     )
     .bind(
       merged.websiteName,
@@ -326,7 +338,8 @@ export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<S
       JSON.stringify(merged.ctaLabels),
       merged.instagramEnabled ? 1 : 0,
       merged.instagramCtaText,
-      merged.timezone || DEFAULT_TIMEZONE
+      merged.timezone || DEFAULT_TIMEZONE,
+      JSON.stringify(Array.isArray(merged.homeSectionOrder) ? merged.homeSectionOrder : [])
     )
     .run();
   return merged;

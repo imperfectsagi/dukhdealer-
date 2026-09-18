@@ -14,7 +14,7 @@ import {
 } from "@/lib/d1";
 import { formatCurrency } from "@/lib/utils";
 import { SERVICE_TYPE_LABELS as LABELS } from "@/types";
-import { HOME_SECTION_ORDER, type HomeSectionKey } from "@/config/home-sections";
+import { resolveHomeSectionOrder, type HomeSectionKey } from "@/config/home-sections";
 import PackageRating from "@/components/public/PackageRating";
 
 export const dynamic = "force-dynamic";
@@ -44,11 +44,30 @@ export default async function HomePage() {
     }
   })();
 
+  // Section order comes from Admin Panel -> Home Sections; the resolver drops
+  // unknown keys and appends any section the saved order doesn't mention, so
+  // the homepage can never end up blank or missing a section.
+  const sectionOrder = resolveHomeSectionOrder(site.homeSectionOrder);
+
+  // Homepage shows a preview only — at most 6 published reviews — so a package
+  // with 100 reviews doesn't turn the homepage into an endless scroll.
+  const REVIEW_PREVIEW_LIMIT = 6;
+  const previewReviews = revs.slice(0, REVIEW_PREVIEW_LIMIT);
+  const hasMoreReviews = revs.length > REVIEW_PREVIEW_LIMIT;
+  // If every published review belongs to one package, "View all reviews" goes
+  // straight to that package's page. Otherwise it goes to the packages list,
+  // from where each package's own reviews are one tap away.
+  const reviewPackageIds = Array.from(
+    new Set(revs.map((r) => r.packageId).filter((id): id is string => !!id))
+  );
+  const viewAllReviewsHref =
+    reviewPackageIds.length === 1 ? `/packages/${reviewPackageIds[0]}` : "/packages";
+
   /**
    * Each home page section is built independently and stored under its key.
-   * The vertical order comes from HOME_SECTION_ORDER in
-   * src/config/home-sections.ts — reordering the home page is an edit to that
-   * array, nothing here has to move.
+   * The vertical order comes from the admin-saved order (or the default in
+   * src/config/home-sections.ts) — reordering the home page never moves any
+   * JSX.
    */
   const sections: Record<HomeSectionKey, ReactNode> = {
     /* Hero — heading/description/CTA/media all come from Admin > Banners */
@@ -209,7 +228,7 @@ export default async function HomePage() {
             What people say
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {revs.slice(0, 6).map((r) => (
+            {previewReviews.map((r) => (
               <div
                 key={r.id}
                 className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-6"
@@ -217,14 +236,34 @@ export default async function HomePage() {
                 <div className="flex gap-1 text-[var(--color-accent)] text-sm mb-3">
                   {"★".repeat(r.rating)}
                 </div>
-                <p className="text-sm text-[var(--color-foreground)] leading-relaxed">&ldquo;{r.text}&rdquo;</p>
+                {r.text && (
+                  <p className="text-sm text-[var(--color-foreground)] leading-relaxed">
+                    &ldquo;{r.text}&rdquo;
+                  </p>
+                )}
                 <p className="mt-4 text-xs text-[var(--color-muted)]">
                   — {r.displayName}
-                  {r.packageName ? ` · ${r.packageName}` : ""}
+                  {/* Package context, so "View all reviews" has an obvious destination */}
+                  {r.packageId && r.packageName && (
+                    <>
+                      {" · "}
+                      <Link href={`/packages/${r.packageId}`} className="hover:underline">
+                        {r.packageName}
+                      </Link>
+                    </>
+                  )}
                 </p>
               </div>
             ))}
           </div>
+
+          {hasMoreReviews && (
+            <div className="mt-8 text-center">
+              <Link href={viewAllReviewsHref}>
+                <Button variant="outline">View all reviews</Button>
+              </Link>
+            </div>
+          )}
         </div>
       </section>
     ),
@@ -292,7 +331,7 @@ export default async function HomePage() {
 
   return (
     <div className="animate-fade-in">
-      {HOME_SECTION_ORDER.map((key) => (
+      {sectionOrder.map((key) => (
         <Fragment key={key}>{sections[key]}</Fragment>
       ))}
     </div>

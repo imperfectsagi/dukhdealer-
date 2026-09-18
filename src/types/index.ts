@@ -234,6 +234,13 @@ export interface SiteSettings {
   instagramCtaText: string;
   /** IANA timezone all booking dates/times are configured and displayed in. */
   timezone: string;
+  /**
+   * Home page section order set in Admin Panel -> Home Sections, as section
+   * keys. Empty array = no admin order saved, so the public homepage uses the
+   * default order in src/config/home-sections.ts. Validated at render time, so
+   * unknown or missing keys can never blank the homepage.
+   */
+  homeSectionOrder: string[];
 }
 
 export interface ThemeSettings {

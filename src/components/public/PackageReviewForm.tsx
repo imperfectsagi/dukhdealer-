@@ -6,22 +6,17 @@ import Button from "@/components/ui/Button";
 /**
  * Customer review submission for one package.
  *
- * Uses the existing customer credential: the Booking ID. The server re-reads
- * that booking, checks the payment is verified, and takes the package from the
- * booking's own package_id — the packageId prop below is only used to tell the
- * customer which package they are reviewing. Submissions are held for
- * moderation (status `draft`) until an admin publishes them.
+ * Only a rating is required — review text and display name are both optional,
+ * so a customer can leave 5 stars and nothing else. No Booking ID or Order ID
+ * is asked for, here or by the API.
+ *
+ * The review is attached to this package by its real package ID and saved with
+ * the existing moderation status `draft`, so it only appears publicly after an
+ * admin publishes it in Admin Panel -> Reviews.
  */
-export default function PackageReviewForm({
-  packageName,
-  defaultBookingId = "",
-}: {
-  packageName: string;
-  defaultBookingId?: string;
-}) {
-  const [bookingId, setBookingId] = useState(defaultBookingId);
+export default function PackageReviewForm({ packageId }: { packageId: string }) {
   const [displayName, setDisplayName] = useState("");
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -31,13 +26,17 @@ export default function PackageReviewForm({
     "w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2.5 text-sm text-[var(--color-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]";
 
   const submit = async () => {
+    if (rating < 1) {
+      setError("Please choose a rating.");
+      return;
+    }
     setError("");
     setBusy(true);
     try {
       const res = await fetch("/api/public/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, rating, text, displayName }),
+        body: JSON.stringify({ packageId, rating, text, displayName }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
       if (!res.ok) {
@@ -65,32 +64,10 @@ export default function PackageReviewForm({
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-6">
       <h3 className="text-lg font-medium">Write a review</h3>
       <p className="mt-1 text-sm text-[var(--color-muted)]">
-        For customers who used <span className="font-medium">{packageName}</span>. Enter the Booking
-        ID from your confirmation — it is how we confirm the session.
+        Share your experience with this package.
       </p>
 
-      <div className="mt-4 space-y-3">
-        <label className="block text-xs text-[var(--color-muted)]">
-          Booking ID
-          <input
-            className={`mt-1 ${inputClass}`}
-            placeholder="DD-2026-XXXXX"
-            value={bookingId}
-            onChange={(e) => setBookingId(e.target.value)}
-            autoComplete="off"
-          />
-        </label>
-
-        <label className="block text-xs text-[var(--color-muted)]">
-          Display name (optional)
-          <input
-            className={`mt-1 ${inputClass}`}
-            placeholder="e.g. A.K."
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-        </label>
-
+      <div className="mt-4 space-y-4">
         <div className="text-xs text-[var(--color-muted)]">
           Rating
           <div className="mt-1 flex gap-1">
@@ -100,7 +77,10 @@ export default function PackageReviewForm({
                 type="button"
                 aria-label={`${n} star${n > 1 ? "s" : ""}`}
                 aria-pressed={rating === n}
-                onClick={() => setRating(n)}
+                onClick={() => {
+                  setRating(n);
+                  setError("");
+                }}
                 className={`min-h-11 min-w-11 rounded-lg border text-lg transition-colors ${
                   n <= rating
                     ? "border-[var(--color-accent)] text-[var(--color-accent)]"
@@ -114,20 +94,29 @@ export default function PackageReviewForm({
         </div>
 
         <label className="block text-xs text-[var(--color-muted)]">
-          Your review
+          Your review (optional)
           <textarea
             className={`mt-1 ${inputClass}`}
             rows={4}
-            placeholder="What was the conversation like?"
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={1200}
           />
         </label>
 
+        <label className="block text-xs text-[var(--color-muted)]">
+          Display name (optional)
+          <input
+            className={`mt-1 ${inputClass}`}
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            maxLength={60}
+          />
+        </label>
+
         {error && <p className="text-sm text-[var(--color-danger)]">{error}</p>}
 
-        <Button onClick={submit} disabled={busy || !bookingId.trim() || text.trim().length < 8}>
+        <Button onClick={submit} disabled={busy || rating < 1}>
           {busy ? "Submitting…" : "Submit review"}
         </Button>
         <p className="text-xs text-[var(--color-muted)]">

@@ -54,11 +54,20 @@ export default async function PackageDetailPage({
         </Link>
       </div>
 
+      {/* Order here matters: rating summary, then the review form, then the
+          reviews themselves. With 100 reviews on a package a customer would
+          otherwise have to scroll past all of them to leave one. */}
       <section className="mt-12">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold sm:text-2xl">Reviews for this package</h2>
           <PackageRating summary={summary} />
         </div>
+
+        <PackageReviewForm packageId={pkg.id} />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="mb-6 text-lg font-medium">Customer reviews</h2>
 
         {reviews.length === 0 ? (
           <p className="text-sm text-[var(--color-muted)]">
@@ -72,12 +81,14 @@ export default async function PackageDetailPage({
                 className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-6"
               >
                 <div className="mb-3 flex items-center gap-2 text-sm text-[var(--color-accent)]">
-                  {"★".repeat(r.rating)}
-                  <span className="text-[var(--color-border)]">{"★".repeat(5 - r.rating)}</span>
+                  {"\u2605".repeat(r.rating)}
+                  <span className="text-[var(--color-border)]">{"\u2605".repeat(5 - r.rating)}</span>
                 </div>
-                <p className="text-sm leading-relaxed text-[var(--color-foreground)]">
-                  &ldquo;{r.text}&rdquo;
-                </p>
+                {r.text && (
+                  <p className="text-sm leading-relaxed text-[var(--color-foreground)]">
+                    &ldquo;{r.text}&rdquo;
+                  </p>
+                )}
                 <p className="mt-4 text-xs text-[var(--color-muted)]">
                   — {r.displayName} ·{" "}
                   {new Date(r.createdAt).toLocaleDateString("en-IN", {
@@ -90,10 +101,6 @@ export default async function PackageDetailPage({
             ))}
           </div>
         )}
-      </section>
-
-      <section className="mt-10">
-        <PackageReviewForm packageName={pkg.name} />
       </section>
     </div>
   );
