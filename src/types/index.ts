@@ -122,10 +122,8 @@ export interface Booking {
 }
 
 /**
- * What the public booking-status endpoint returns. Never includes the payment
- * screenshot, admin notes, or the customer id — and only includes
- * `googleMeetLink` once payment is verified, a link exists, the caller proved
- * ownership with the booking access token, and the join window is open.
+ * What the public booking-status endpoint returns for a given Booking ID.
+ * Never includes the payment screenshot, admin notes or the customer id.
  */
 export interface PublicBooking {
   bookingId: string;
@@ -144,7 +142,7 @@ export interface PublicBooking {
   language?: Language;
   languageCustom?: string;
   conversationPreference?: ConversationPreference;
-  /** True when the caller supplied a valid access token for this booking. */
+  /** True once the booking was successfully retrieved by its Booking ID. */
   authorized: boolean;
   /** Payment verified + booking not cancelled. */
   verified: boolean;
@@ -152,7 +150,11 @@ export interface PublicBooking {
   meetLinkReady: boolean;
   /** Inside the allowed join window for the scheduled time. */
   joinWindowOpen: boolean;
-  /** Present only when authorized && verified && meetLinkReady && joinWindowOpen. */
+  /**
+   * Present only when payment is verified AND an admin has saved a link.
+   * Not gated on the join window — the customer can see and copy the link
+   * ahead of time, which is what they need to add it to their calendar.
+   */
   googleMeetLink?: string;
   /** ISO timestamp the join button becomes usable. */
   joinOpensAt?: string;
@@ -225,6 +227,18 @@ export interface ThemeSettings {
   muted: string;
   cta: string;
   ctaText: string;
+  /**
+   * Homepage header/hero text colour overrides.
+   *
+   * Each one is independent and optional. An empty string or undefined means
+   * "fall back to the theme colour" for that single element, so clearing one
+   * never disturbs the others. These apply ONLY to the homepage header/hero
+   * text — never to button backgrounds, button labels, or any other page.
+   */
+  homepageHeadingColor?: string;
+  homepageSubheadingColor?: string;
+  homepageEyebrowColor?: string;
+  homepageNavColor?: string;
 }
 
 export interface MediaItem {
@@ -256,6 +270,14 @@ export interface Banner {
   videoMuted: boolean;
   videoLoop: boolean;
   videoControls: boolean;
+  /**
+   * Focal point as a percentage of the image's own width/height (0-100), set by
+   * clicking the preview in the Banner Manager. Rendered as CSS
+   * `object-position`, so when the hero is cropped on a narrow screen the chosen
+   * point stays in frame. Defaults to dead centre (50/50).
+   */
+  focalX: number;
+  focalY: number;
   published: boolean;
   displayOrder: number;
   updatedAt?: string;

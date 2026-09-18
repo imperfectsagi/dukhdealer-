@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Logo from "@/components/ui/Logo";
 import HeaderNav, { type HeaderNavItem } from "@/components/layout/HeaderNav";
-import { getLogoSettings, getSiteSettings, withCacheBust } from "@/lib/d1";
+import { getLogoSettings, getSiteSettings, getThemeSettings, withCacheBust } from "@/lib/d1";
 
 const FALLBACK_NAV: HeaderNavItem[] = [
   { href: "/", label: "Home" },
@@ -9,6 +9,7 @@ const FALLBACK_NAV: HeaderNavItem[] = [
   { href: "/services", label: "Sessions" },
   { href: "/packages", label: "Packages" },
   { href: "/blog", label: "Blog" },
+  { href: "/track", label: "Track Booking" },
 ];
 
 /**
@@ -24,9 +25,15 @@ export default async function Header() {
   let bookLabel = "Book a Session";
   let logoSrc: string | undefined;
   let logoAlt: string | undefined;
+  let homepageNavColor: string | undefined;
 
   try {
-    const [site, logo] = await Promise.all([getSiteSettings(), getLogoSettings()]);
+    const [site, logo, theme] = await Promise.all([
+      getSiteSettings(),
+      getLogoSettings(),
+      getThemeSettings(),
+    ]);
+    homepageNavColor = theme.homepageNavColor;
     websiteName = site.websiteName || websiteName;
     bookLabel = site.ctaLabels?.book || site.navigationLabels?.book || bookLabel;
 
@@ -51,7 +58,7 @@ export default async function Header() {
           <Link href="/" className="flex min-w-0 items-center gap-2" aria-label={websiteName}>
             <Logo src={logoSrc} alt={logoAlt} websiteName={websiteName} />
           </Link>
-          <HeaderNav items={nav} bookLabel={bookLabel} />
+          <HeaderNav items={nav} bookLabel={bookLabel} homepageNavColor={homepageNavColor} />
         </div>
       </div>
     </header>

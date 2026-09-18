@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import { BookingStatusBadge, PaymentStatusBadge } from "@/components/ui/StatusBadge";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
@@ -12,56 +13,33 @@ import { SERVICE_TYPE_LABELS } from "@/types";
 type LoadState = "loading" | "ready" | "missing" | "error";
 
 /**
- * Customer booking status page.
+ * Customer booking status page, reachable at /booking/DD-2026-XXXXX.
  *
- * The old version linked "Join Session" to /session/[bookingId], a route that
- * does not exist in this app — that was the 404 customers hit after an admin
- * approved their payment. The join action now opens the Google Meet link the
- * admin saved on the booking, and only when the server says it may.
+ * The Booking ID in the URL is all that is needed, so this page works from the
+ * confirmation link, from a bookmark, from the Track Booking form, and on a
+ * different device — the customer can leave and come back freely.
  *
- * The server decides everything: we render exactly what the API returns and
- * never infer "confirmed" or fabricate a link.
+ * Everything shown comes from the server. The Google Meet link appears here
+ * only because the API returned one, which it does only after an admin has
+ * verified the payment and saved a link. Nothing is inferred client-side.
  */
 export default function BookingStatusPage() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const router = useRouter();
 
   const bookingId = String(params.bookingId || "");
   const [booking, setBooking] = useState<PublicBooking | null>(null);
   const [state, setState] = useState<LoadState>("loading");
-  const [token, setToken] = useState<string | null>(null);
-  const [keyInput, setKeyInput] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-
-  // Token comes from the confirmation link (?k=...), or from this device's
-  // stored copy if they come back later without the full link.
-  useEffect(() => {
-    const fromUrl = searchParams.get("k");
-    if (fromUrl) {
-      setToken(fromUrl);
-      try {
-        localStorage.setItem(`dd_booking_${bookingId}`, fromUrl);
-      } catch {
-        /* storage unavailable — the URL token still works for this visit */
-      }
-      return;
-    }
-    try {
-      setToken(localStorage.getItem(`dd_booking_${bookingId}`));
-    } catch {
-      setToken(null);
-    }
-  }, [bookingId, searchParams]);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(
-    async (accessToken: string | null, showSpinner = false) => {
+    async (showSpinner = false) => {
       if (showSpinner) setRefreshing(true);
       try {
-        const url = accessToken
-          ? `/api/public/bookings/${encodeURIComponent(bookingId)}?k=${encodeURIComponent(accessToken)}`
-          : `/api/public/bookings/${encodeURIComponent(bookingId)}`;
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch(`/api/public/bookings/${encodeURIComponent(bookingId)}`, {
+          cache: "no-store",
+        });
         if (res.status === 404) {
           setState("missing");
           return;
@@ -82,10 +60,20 @@ export default function BookingStatusPage() {
   );
 
   useEffect(() => {
-    load(token);
-  }, [token, load]);
+    load();
+  }, [load]);
 
-  // ---- States ----
+  // Remember the most recent booking so the Track Booking page can offer it
+  // back. Purely a convenience — the page never depends on it.
+  useEffect(() => {
+    if (state !== "ready") return;
+    try {
+      localStorage.setItem("dd_last_booking", bookingId);
+    } catch {
+      /* storage disabled (private browsing) — nothing depends on this */
+    }
+  }, [state, bookingId]);
+
   if (state === "loading") {
     return (
       <Shell>
@@ -100,12 +88,17 @@ export default function BookingStatusPage() {
         <h1 className="mb-2 text-xl font-semibold">Booking not found</h1>
         <p className="text-sm text-[var(--color-muted)]">
           We couldn&rsquo;t find a booking with the ID{" "}
-          <span className="break-anywhere font-mono">{bookingId}</span>. Please check the link from
-          your confirmation.
+          <span className="break-anywhere font-mono">{bookingId}</span>. Double-check it against
+          your confirmation — it looks like <span className="font-mono">DD-2026-XXXXX</span>.
         </p>
-        <Button variant="outline" className="mt-6" onClick={() => router.push("/")}>
-          Back to Home
-        </Button>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <Link href="/track">
+            <Button className="w-full sm:w-auto">Try another Booking ID</Button>
+          </Link>
+          <Button variant="outline" onClick={() => router.push("/")}>
+            Back to Home
+          </Button>
+        </div>
       </Shell>
     );
   }
@@ -119,15 +112,24 @@ export default function BookingStatusPage() {
           your booking is safe.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <Button onClick={() => load(token, true)}>Try again</Button>
-          <Button variant="outline" onClick={() => router.push("/")}>Back to Home</Button>
+          <Button onClick={() => load(true)}>Try again</Button>
+          <Button variant="outline" onClick={() => router.push("/")}>
+            Back to Home
+          </Button>
         </div>
       </Shell>
     );
   }
 
   const zone = tzLabel(booking.timezone);
-  const joinable = !!booking.googleMeetLink;
+  const meetLink = booking.googleMeetLink;
+
+  const copyLink = () => {
+    if (!meetLink) return;
+    navigator.clipboard?.writeText(meetLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <div className="animate-fade-in mx-auto max-w-lg px-4 py-12 sm:py-16">
@@ -145,10 +147,12 @@ export default function BookingStatusPage() {
           <Row label="Date" value={formatDate(booking.date)} />
           <Row label="Time" value={`${formatTime(booking.time)} ${zone}`} />
           <Row label="Amount" value={formatCurrency(booking.amount, booking.currency)} />
-          {booking.authorized && booking.language && (
+          {booking.language && (
             <Row
               label="Language"
-              value={booking.language === "other" ? booking.languageCustom || "Other" : booking.language}
+              value={
+                booking.language === "other" ? booking.languageCustom || "Other" : booking.language
+              }
             />
           )}
         </div>
@@ -158,7 +162,7 @@ export default function BookingStatusPage() {
           <BookingStatusBadge status={booking.bookingStatus} />
         </div>
 
-        {/* ---- Join area. Every branch reflects real server state. ---- */}
+        {/* Each branch below reflects real stored state, never a guess. */}
         {!booking.verified ? (
           <div className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] p-4 text-sm text-[var(--color-muted)]">
             {booking.paymentStatus === "rejected"
@@ -167,75 +171,42 @@ export default function BookingStatusPage() {
                 ? "This booking has been cancelled."
                 : booking.bookingStatus === "refunded"
                   ? "This booking has been refunded."
-                  : "Your payment is being verified. Once it is approved, your session details will appear here."}
+                  : "Your payment is being verified. Once it is approved, your session link will appear right here on this page."}
           </div>
-        ) : !booking.meetLinkReady ? (
+        ) : !meetLink ? (
           <div className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] p-4 text-sm">
             <p className="font-medium text-[var(--color-foreground)]">Payment verified</p>
             <p className="mt-1 text-[var(--color-muted)]">
-              Your session is confirmed. The meeting link will appear here shortly before your
-              session starts.
+              Your session is confirmed. Your Google Meet link is being set up and will appear on
+              this page — check back using your Booking ID.
             </p>
-          </div>
-        ) : !booking.authorized ? (
-          <div className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] p-4 text-sm">
-            <p className="font-medium text-[var(--color-foreground)]">Booking verified</p>
-            <p className="mt-1 text-[var(--color-muted)]">
-              For your privacy the meeting link is only shown to you. Open the booking link from
-              your confirmation, or enter your access key below.
-            </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <input
-                type="text"
-                value={keyInput}
-                onChange={(e) => setKeyInput(e.target.value)}
-                placeholder="Access key"
-                aria-label="Booking access key"
-                className="min-h-11 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] px-3 text-base outline-none focus:border-[var(--color-primary)] sm:text-sm"
-              />
-              <Button
-                onClick={() => {
-                  const trimmed = keyInput.trim();
-                  if (trimmed) setToken(trimmed);
-                }}
-                disabled={!keyInput.trim()}
-              >
-                Unlock
-              </Button>
-            </div>
-          </div>
-        ) : !booking.joinWindowOpen ? (
-          <div className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] p-4 text-sm">
-            <p className="font-medium text-[var(--color-foreground)]">Booking verified</p>
-            <p className="mt-1 text-[var(--color-muted)]">
-              {booking.joinOpensAt && new Date(booking.joinOpensAt) > new Date()
-                ? `You can join from ${new Date(booking.joinOpensAt).toLocaleString("en-IN", { timeZone: booking.timezone, dateStyle: "medium", timeStyle: "short" })} (${zone}).`
-                : "This session's join window has closed."}
-            </p>
-            <Button className="mt-3 w-full" disabled>
-              Join Google Meet
-            </Button>
           </div>
         ) : (
           <div className="mb-3 rounded-lg border border-green-300 bg-green-50 p-4 text-sm">
-            <p className="font-medium text-green-800">Booking verified — you can join now</p>
-            <a href={booking.googleMeetLink} target="_blank" rel="noopener noreferrer">
+            <p className="font-medium text-green-800">Booking confirmed — your meeting link is ready</p>
+            <p className="mt-1 text-green-900/80">
+              {booking.joinWindowOpen
+                ? "Your session window is open. Join when you're ready."
+                : `Join at your scheduled time: ${formatDate(booking.date)}, ${formatTime(booking.time)} ${zone}.`}
+            </p>
+            <a href={meetLink} target="_blank" rel="noopener noreferrer">
               <Button className="mt-3 w-full">Join Google Meet</Button>
             </a>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="mt-2 w-full break-anywhere rounded-lg border border-green-300 px-3 py-2 text-center text-xs text-green-900/80 hover:bg-green-100"
+            >
+              {copied ? "Link copied" : `Copy link — ${meetLink}`}
+            </button>
           </div>
-        )}
-
-        {joinable && booking.authorized && (
-          <p className="mb-3 break-anywhere text-center text-xs text-[var(--color-muted)]">
-            {booking.googleMeetLink}
-          </p>
         )}
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button
             variant="outline"
             className="flex-1"
-            onClick={() => load(token, true)}
+            onClick={() => load(true)}
             disabled={refreshing}
           >
             {refreshing ? "Refreshing…" : "Refresh status"}
@@ -244,6 +215,14 @@ export default function BookingStatusPage() {
             Back to Home
           </Button>
         </div>
+
+        <p className="mt-4 text-center text-xs text-[var(--color-muted)]">
+          Save your Booking ID. You can return to this page anytime from{" "}
+          <Link href="/track" className="underline">
+            Track Booking
+          </Link>
+          .
+        </p>
       </div>
     </div>
   );

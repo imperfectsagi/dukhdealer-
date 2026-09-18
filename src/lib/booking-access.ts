@@ -2,17 +2,22 @@ import type { Booking, PublicBooking } from "@/types";
 import { DEFAULT_TIMEZONE, zonedToUtc } from "@/lib/timezone";
 
 /**
- * Authorization for customer-facing booking reads.
+ * Customer-facing booking reads.
  *
- * There is no customer login in this product, so "ownership" is proved with a
- * high-entropy access token minted server-side when the booking is created and
- * handed back exactly once. Knowing the human-readable Booking ID
- * (DD-2026-8F42K) is therefore NOT enough to see private details or the Google
- * Meet link.
+ * There is no customer login in this product, so the Booking ID is the
+ * credential: a customer who can produce DD-2026-8F42K on the Track Booking
+ * page sees that booking, including its Google Meet link once payment has been
+ * approved and a link saved. That is a deliberate product decision — customers
+ * need to get back into their booking from any device, after closing the tab,
+ * without an account.
  *
- * A request without a token still gets a real 200 with the booking's status —
- * so a valid Booking ID never produces a 404 — but the Meet link, nickname and
- * conversation details are withheld.
+ * The one hard rule that remains: the Meet link is NEVER returned until an
+ * admin has actually verified the payment AND saved a link. Both facts are read
+ * from D1; neither is inferred.
+ *
+ * An access token is still minted per booking and included in the confirmation
+ * link, so direct links keep working, but it is no longer required to view the
+ * booking.
  */
 
 /** Join opens this many minutes before the scheduled start. */
@@ -28,15 +33,6 @@ export function generateAccessToken(): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/** Length-safe constant-time string compare. */
-export function timingSafeEqual(a: string, b: string): boolean {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 /** Absolute start/end instants for a booking, honouring its stored timezone. */
@@ -102,13 +98,18 @@ export function isValidMeetLink(url: string): boolean {
  */
 export function toPublicBooking(
   booking: Booking,
-  options: { authorized: boolean; now?: Date }
+  options: { authorized?: boolean; now?: Date } = {}
 ): PublicBooking {
   const now = options.now ?? new Date();
   const verified = isBookingVerified(booking);
   const meetLinkReady = !!booking.googleMeetLink;
   const joinWindowOpen = isJoinWindowOpen(booking, now);
-  const canSeeLink = options.authorized && verified && meetLinkReady && joinWindowOpen;
+
+  // The link becomes visible as soon as payment is approved and a link exists.
+  // It used to additionally require the join window to be open, which is why a
+  // link an admin added days in advance appeared to never show up: the customer
+  // could only have seen it in the ten minutes before their session.
+  const canSeeLink = verified && meetLinkReady;
 
   const payload: PublicBooking = {
     bookingId: booking.bookingId,
@@ -123,7 +124,8 @@ export function toPublicBooking(
     currency: booking.currency,
     paymentStatus: booking.paymentStatus,
     bookingStatus: booking.bookingStatus,
-    authorized: options.authorized,
+    // Retrieving a booking by its ID is what authorises the customer view.
+    authorized: options.authorized ?? true,
     verified,
     meetLinkReady,
     joinWindowOpen,
@@ -134,12 +136,10 @@ export function toPublicBooking(
     payload.joinOpensAt = joinOpensAt(booking).toISOString();
   }
 
-  if (options.authorized) {
-    payload.customerNickname = booking.customerNickname;
-    payload.language = booking.language;
-    payload.languageCustom = booking.languageCustom;
-    payload.conversationPreference = booking.conversationPreference;
-  }
+  payload.customerNickname = booking.customerNickname;
+  payload.language = booking.language;
+  payload.languageCustom = booking.languageCustom;
+  payload.conversationPreference = booking.conversationPreference;
 
   if (canSeeLink) {
     payload.googleMeetLink = booking.googleMeetLink;

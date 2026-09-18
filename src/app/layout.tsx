@@ -40,17 +40,26 @@ export async function generateMetadata(): Promise<Metadata> {
     // D1 not reachable (e.g. first boot before migrations) — static defaults.
   }
 
-  // Favicon comes from logo_settings so Admin > Favicon actually takes effect.
-  // The ?v= stamp defeats the aggressive caching browsers apply to favicons.
+  // Favicon always points at /api/favicon, which resolves the active favicon
+  // from logo_settings (falling back to the bundled default). Pointing the
+  // <link> at the route rather than the R2 URL means there is exactly one place
+  // that decides what the icon is.
+  //
+  // The ?v= stamp changes whenever an admin saves, which is what forces
+  // browsers — and any CDN in front of the Worker — to pick up a replacement
+  // instead of serving the previously cached icon.
+  let iconHref = "/api/favicon";
   try {
     const logo = await getLogoSettings();
-    const favicon = withCacheBust(logo.favicon, logo.updatedAt);
-    if (favicon) {
-      seoMeta.icons = { icon: favicon, shortcut: favicon, apple: favicon };
-    }
+    iconHref = withCacheBust("/api/favicon", logo.updatedAt) || iconHref;
   } catch {
-    // Fall through to the default /favicon.ico served from src/app.
+    // D1 unreachable — the unversioned route still serves the right icon.
   }
+  seoMeta.icons = {
+    icon: [{ url: iconHref }],
+    shortcut: [{ url: iconHref }],
+    apple: [{ url: iconHref }],
+  };
 
   return seoMeta;
 }

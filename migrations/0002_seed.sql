@@ -41,8 +41,11 @@ VALUES (
 -- an admin uploads one in Admin Panel -> Logo. The previous seed pointed at
 -- /logo-light.svg and /logo-dark.svg, which do not exist in /public and rendered as
 -- broken images.
+-- favicon starts NULL: /api/favicon then serves the bundled
+-- public/favicon-default.png until an admin uploads one. Storing '/favicon.ico'
+-- here used to point the favicon route back at itself.
 INSERT OR IGNORE INTO logo_settings (id, light_logo, dark_logo, favicon)
-VALUES ('default', NULL, NULL, '/favicon.ico');
+VALUES ('default', NULL, NULL, NULL);
 
 INSERT OR IGNORE INTO payment_qr (id, image_url, instructions, enabled, upi_id)
 VALUES ('default', '/mock/payment-qr.svg', 'Scan the QR with any UPI app. Pay the exact amount shown. Then upload a clear screenshot of the successful payment.', 1, 'dukhdealer@upi');

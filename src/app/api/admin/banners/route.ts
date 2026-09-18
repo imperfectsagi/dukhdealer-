@@ -35,6 +35,8 @@ export async function POST(req: NextRequest) {
       videoMuted: body.videoAutoplay ? true : body.videoMuted ?? true,
       videoLoop: body.videoLoop ?? true,
       videoControls: body.videoControls ?? false,
+      focalX: body.focalX ?? 50,
+      focalY: body.focalY ?? 50,
       published: body.published ?? false,
       displayOrder: body.displayOrder ?? existing.length + 1,
     });

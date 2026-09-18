@@ -1,20 +1,29 @@
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import BannerHero from "@/components/public/BannerHero";
-import { getBanners, getCTABlocks, getFAQs, getPackages, getReviews, getSiteSettings } from "@/lib/d1";
+import {
+  getBanners,
+  getCTABlocks,
+  getFAQs,
+  getPackages,
+  getReviews,
+  getSiteSettings,
+  getThemeSettings,
+} from "@/lib/d1";
 import { formatCurrency } from "@/lib/utils";
 import { SERVICE_TYPE_LABELS as LABELS } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [pkgs, revs, faqList, banners, ctaBlocks, site] = await Promise.all([
+  const [pkgs, revs, faqList, banners, ctaBlocks, site, theme] = await Promise.all([
     getPackages(true),
     getReviews(true),
     getFAQs(true),
     getBanners(true),
     getCTABlocks(true),
     getSiteSettings(),
+    getThemeSettings(),
   ]);
 
   // Highest-priority published banner drives the hero.
@@ -45,6 +54,13 @@ export default async function HomePage() {
           href: "/booking",
         }}
         secondaryCta={{ label: site.ctaLabels?.secondary || "See How It Works", href: "/about" }}
+        // Homepage-only text colours from Admin > Theme. Each is passed through
+        // separately and each falls back to its own theme colour when blank, so
+        // one being set never changes the other two. Button colours are not
+        // touched by any of them.
+        headingColor={theme.homepageHeadingColor}
+        subheadingColor={theme.homepageSubheadingColor}
+        eyebrowColor={theme.homepageEyebrowColor}
       />
 
       {/* How it works */}

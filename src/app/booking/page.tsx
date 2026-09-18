@@ -209,14 +209,14 @@ export default function BookingPage() {
         return;
       }
 
-      // The access token is what proves this booking is theirs. Keep a copy so
-      // returning to /booking/<id> later on this device still works.
-      const statusUrl = data.statusUrl || `/booking/${data.bookingId}`;
+      // The Booking ID alone opens the booking, from any device, via the
+      // Track Booking page. Remembering it here is only a convenience for
+      // returning on this same device.
+      const statusUrl = `/booking/${data.bookingId}`;
       try {
-        const token = new URL(statusUrl, window.location.origin).searchParams.get("k");
-        if (token) localStorage.setItem(`dd_booking_${data.bookingId}`, token);
+        localStorage.setItem("dd_last_booking", data.bookingId);
       } catch {
-        // Private browsing / storage disabled — the URL still carries the token.
+        // Private browsing / storage disabled — the Booking ID still works.
       }
 
       setResult({ bookingId: data.bookingId, statusUrl });
@@ -248,7 +248,9 @@ export default function BookingPage() {
             </p>
           </div>
           <p className="mb-6 text-xs text-[var(--color-muted)]">
-            Save this link — it is how you open your booking and join your session.
+            Save this Booking ID. You can return to this booking anytime from
+            &ldquo;Track Booking&rdquo; on the website — that is also where your Google Meet link
+            appears once we&rsquo;ve verified your payment.
           </p>
           {selectedPkg && (
             <div className="mb-8 space-y-2 text-left text-sm text-[var(--color-muted)]">

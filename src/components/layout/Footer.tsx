@@ -6,6 +6,7 @@ const EXPLORE = [
   { href: "/services", label: "Sessions" },
   { href: "/packages", label: "Packages" },
   { href: "/blog", label: "Blog" },
+  { href: "/track", label: "Track Booking" },
 ];
 
 /** Reads site settings so the Instagram URL, email and footer text are CMS-driven. */

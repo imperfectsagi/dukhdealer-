@@ -27,6 +27,9 @@ export default function BannerHero({
   fallbackDescription,
   primaryCta,
   secondaryCta,
+  headingColor,
+  subheadingColor,
+  eyebrowColor,
 }: {
   banner?: Banner;
   eyebrow?: string;
@@ -34,6 +37,10 @@ export default function BannerHero({
   fallbackDescription: string;
   primaryCta: { label: string; href: string };
   secondaryCta?: { label: string; href: string };
+  /** Homepage-only text overrides. Undefined means "use the theme colour". */
+  headingColor?: string;
+  subheadingColor?: string;
+  eyebrowColor?: string;
 }) {
   const [videoFailed, setVideoFailed] = useState(false);
 
@@ -46,7 +53,10 @@ export default function BannerHero({
   const imageFallback =
     banner?.mediaType === "video" ? banner.posterUrl || banner.imageUrl : banner?.imageUrl;
   const showImage = !showVideo && !!imageFallback;
-  const hasMedia = showVideo || showImage;
+
+  const focalX = banner?.focalX ?? 50;
+  const focalY = banner?.focalY ?? 50;
+  const focalStyle = { objectPosition: `${focalX}% ${focalY}%` };
 
   return (
     <section className="relative overflow-hidden border-b border-[var(--color-border)]">
@@ -54,6 +64,8 @@ export default function BannerHero({
         <video
           key={banner?.videoUrl}
           className="absolute inset-0 h-full w-full object-cover"
+          // Focal point also anchors video cropping on narrow screens.
+          style={focalStyle}
           src={banner?.videoUrl}
           poster={banner?.posterUrl || banner?.imageUrl}
           autoPlay={banner?.videoAutoplay}
@@ -76,26 +88,32 @@ export default function BannerHero({
           alt=""
           aria-hidden="true"
           className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
-
-      {/* Scrim keeps the hero copy legible over any uploaded media. */}
-      {hasMedia && (
-        <div
-          aria-hidden="true"
+          // object-cover crops to fill the hero; object-position decides WHICH
+          // part survives that crop, which is the whole point of the focal
+          // point the admin set in the Banner Manager.
+          style={focalStyle}
         />
       )}
 
       <div className="relative mx-auto max-w-6xl px-4 py-20 text-center sm:px-6 sm:py-28">
         {eyebrow && (
-          <p className="mb-4 text-sm uppercase tracking-widest text-[var(--color-accent)]">
+          <p
+            className="mb-4 text-sm uppercase tracking-widest"
+            style={{ color: eyebrowColor || "var(--color-accent)" }}
+          >
             {eyebrow}
           </p>
         )}
-        <h1 className="mx-auto max-w-3xl text-3xl font-semibold leading-tight tracking-tight text-[var(--color-foreground)] sm:text-5xl md:text-6xl">
+        <h1
+          className="mx-auto max-w-3xl text-3xl font-semibold leading-tight tracking-tight sm:text-5xl md:text-6xl"
+          style={{ color: headingColor || "var(--color-foreground)" }}
+        >
           {heading}
         </h1>
-        <p className="mx-auto mt-6 max-w-xl text-base text-[var(--color-muted)] sm:text-lg">
+        <p
+          className="mx-auto mt-6 max-w-xl text-base sm:text-lg"
+          style={{ color: subheadingColor || "var(--color-muted)" }}
+        >
           {description}
         </p>
         <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">

@@ -23,7 +23,48 @@ const defaults: ThemeSettings = {
   ctaText: "#FFFFFF",
 };
 
-const labels: Record<keyof ThemeSettings, string> = {
+/**
+ * Homepage header/hero text overrides.
+ *
+ * These are separate, optional fields: blank means "use the site's default
+ * theme colour" for that one element. They are stored in their own columns and
+ * each is sent independently, so changing one cannot affect the others. They
+ * only style homepage header/hero text — never button backgrounds, button
+ * labels, or text on any other page.
+ */
+const HOMEPAGE_TEXT_FIELDS: {
+  key: HomepageColorKey;
+  label: string;
+  /** The theme colour used when the field is left blank. */
+  fallbackLabel: string;
+  fallbackOf: CoreThemeKey;
+}[] = [
+  { key: "homepageHeadingColor", label: "Homepage Heading", fallbackLabel: "Foreground / Text", fallbackOf: "foreground" },
+  { key: "homepageSubheadingColor", label: "Homepage Subheading / Description", fallbackLabel: "Muted", fallbackOf: "muted" },
+  { key: "homepageEyebrowColor", label: "Homepage Eyebrow / Label", fallbackLabel: "Accent", fallbackOf: "accent" },
+  { key: "homepageNavColor", label: "Homepage Navigation Text", fallbackLabel: "Muted", fallbackOf: "muted" },
+];
+
+type HomepageColorKey =
+  | "homepageHeadingColor"
+  | "homepageSubheadingColor"
+  | "homepageEyebrowColor"
+  | "homepageNavColor";
+
+/** Core site palette keys. Every one of these is always set. */
+type CoreThemeKey =
+  | "primary"
+  | "secondary"
+  | "background"
+  | "foreground"
+  | "accent"
+  | "card"
+  | "border"
+  | "muted"
+  | "cta"
+  | "ctaText";
+
+const labels: Record<CoreThemeKey, string> = {
   primary: "Primary",
   secondary: "Secondary",
   background: "Background",
@@ -82,8 +123,17 @@ export default function AdminThemePage() {
   };
 
   const reset = () => {
-    setTheme(defaults);
-    applyTheme(defaults);
+    // Restores the brand palette but preserves the homepage text overrides,
+    // which are a separate concern with their own Clear buttons.
+    const next: ThemeSettings = {
+      ...defaults,
+      homepageHeadingColor: theme.homepageHeadingColor,
+      homepageSubheadingColor: theme.homepageSubheadingColor,
+      homepageEyebrowColor: theme.homepageEyebrowColor,
+      homepageNavColor: theme.homepageNavColor,
+    };
+    setTheme(next);
+    applyTheme(next);
   };
 
 
@@ -97,7 +147,7 @@ export default function AdminThemePage() {
 
       {saved && <Notice tone="success">Theme saved</Notice>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {(Object.keys(labels) as (keyof ThemeSettings)[]).map((key) => (
+        {(Object.keys(labels) as CoreThemeKey[]).map((key) => (
           <div key={key} className="flex items-center gap-3">
             <input
               type="color"
@@ -117,6 +167,55 @@ export default function AdminThemePage() {
           </div>
         ))}
       </div>
+      <AdminCard
+        title="Homepage header & hero text"
+        description="Optional overrides for the homepage only. Leave a field blank to use the site's default theme colour. Each field is independent — setting one does not change the others, and none of them affect buttons or other pages."
+      >
+        <div className="space-y-4">
+          {HOMEPAGE_TEXT_FIELDS.map(({ key, label, fallbackLabel, fallbackOf }) => {
+            const value = theme[key] || "";
+            const isSet = !!value;
+            return (
+              <div key={key} className="flex items-start gap-3">
+                <input
+                  type="color"
+                  aria-label={`${label} colour`}
+                  // With no override set, the swatch shows the theme colour it
+                  // is currently inheriting, so the admin sees what blank means.
+                  value={isSet ? value : theme[fallbackOf]}
+                  onChange={(e) => setTheme({ ...theme, [key]: e.target.value })}
+                  className="mt-4 cursor-pointer"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm">{label}</p>
+                  <input
+                    type="text"
+                    value={value}
+                    placeholder={`Blank = theme ${fallbackLabel} (${theme[fallbackOf]})`}
+                    onChange={(e) => setTheme({ ...theme, [key]: e.target.value })}
+                    className="mt-0.5 font-mono"
+                  />
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="text-xs text-[var(--admin-text-muted)]">
+                      {isSet ? "Custom colour" : `Using theme ${fallbackLabel}`}
+                    </span>
+                    {isSet && (
+                      <AdminButton
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setTheme({ ...theme, [key]: "" })}
+                      >
+                        Clear
+                      </AdminButton>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </AdminCard>
+
       <div className="flex flex-col gap-2 sm:flex-row">
         <AdminButton loading={saving} onClick={save}>Save theme</AdminButton>
         <AdminButton variant="secondary" onClick={reset}>Reset to default</AdminButton>

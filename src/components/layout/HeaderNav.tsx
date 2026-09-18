@@ -15,12 +15,24 @@ export interface HeaderNavItem {
 export default function HeaderNav({
   items,
   bookLabel,
+  homepageNavColor,
 }: {
   items: HeaderNavItem[];
   bookLabel: string;
+  /**
+   * Homepage navigation text colour from Admin > Theme. Deliberately applied
+   * only when the visitor is on "/" — the requirement is that this setting
+   * affects the homepage header text and nothing else, so every other page
+   * keeps the normal theme colour. It also never touches the Book button,
+   * which keeps its CTA styling everywhere.
+   */
+  homepageNavColor?: string;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  const navColor = pathname === "/" && homepageNavColor ? homepageNavColor : undefined;
+  const navStyle = navColor ? { color: navColor } : undefined;
 
   useEffect(() => {
     setOpen(false);
@@ -34,6 +46,7 @@ export default function HeaderNav({
             key={item.href}
             href={item.href}
             aria-current={pathname === item.href ? "page" : undefined}
+            style={navStyle}
             className="text-sm text-[var(--color-muted)] transition-colors hover:text-[var(--color-foreground)]"
           >
             {item.label}
@@ -49,6 +62,7 @@ export default function HeaderNav({
 
       <button
         type="button"
+        style={navStyle}
         className="flex h-11 w-11 items-center justify-center text-[var(--color-foreground)] md:hidden"
         onClick={() => setOpen(!open)}
         aria-label={open ? "Close menu" : "Open menu"}
@@ -64,6 +78,7 @@ export default function HeaderNav({
               <Link
                 key={item.href}
                 href={item.href}
+                style={navStyle}
                 className="flex min-h-11 items-center text-sm text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
                 onClick={() => setOpen(false)}
               >

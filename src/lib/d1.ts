@@ -183,10 +183,19 @@ function rowToBanner(r: Row): Banner {
     videoMuted: r.video_muted === undefined ? true : !!r.video_muted,
     videoLoop: r.video_loop === undefined ? true : !!r.video_loop,
     videoControls: !!r.video_controls,
+    focalX: r.focal_x === undefined || r.focal_x === null ? 50 : (r.focal_x as number),
+    focalY: r.focal_y === undefined || r.focal_y === null ? 50 : (r.focal_y as number),
     published: !!r.published,
     displayOrder: r.display_order as number,
     updatedAt: (r.updated_at as string) || undefined,
   };
+}
+
+/** Clamp a focal-point percentage into 0-100 and round to one decimal. */
+function clampFocal(value: unknown, fallback = 50): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.round(Math.min(100, Math.max(0, n)) * 10) / 10;
 }
 
 function rowToCTABlock(r: Row): CTABlock {
@@ -324,14 +333,31 @@ export async function getThemeSettings(): Promise<ThemeSettings> {
     muted: r.muted as string,
     cta: r.cta as string,
     ctaText: r.cta_text as string,
+    // Optional per-element homepage overrides; empty string is normalised to
+    // undefined so "blank means use the theme colour" holds everywhere.
+    homepageHeadingColor: (r.homepage_heading_color as string) || undefined,
+    homepageSubheadingColor: (r.homepage_subheading_color as string) || undefined,
+    homepageEyebrowColor: (r.homepage_eyebrow_color as string) || undefined,
+    homepageNavColor: (r.homepage_nav_color as string) || undefined,
   };
+}
+
+/**
+ * Accepts a hex colour, or empty/undefined meaning "no override".
+ * Anything unparseable is treated as no override rather than written through,
+ * so a bad value can never break the public stylesheet.
+ */
+function normalizeOptionalColor(value: string | undefined | null): string | null {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return null;
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed) ? trimmed : null;
 }
 
 export async function updateThemeSettings(data: ThemeSettings): Promise<ThemeSettings> {
   const db = await getDB();
   await db
     .prepare(
-      `UPDATE theme_settings SET primary_color=?, secondary_color=?, background=?, foreground=?, accent=?, card=?, border=?, muted=?, cta=?, cta_text=? WHERE id='default'`
+      `UPDATE theme_settings SET primary_color=?, secondary_color=?, background=?, foreground=?, accent=?, card=?, border=?, muted=?, cta=?, cta_text=?, homepage_heading_color=?, homepage_subheading_color=?, homepage_eyebrow_color=?, homepage_nav_color=? WHERE id='default'`
     )
     .bind(
       data.primary,
@@ -343,10 +369,22 @@ export async function updateThemeSettings(data: ThemeSettings): Promise<ThemeSet
       data.border,
       data.muted,
       data.cta,
-      data.ctaText
+      data.ctaText,
+      // Each override is stored on its own column, so saving one does not read
+      // or rewrite any of the others.
+      normalizeOptionalColor(data.homepageHeadingColor),
+      normalizeOptionalColor(data.homepageSubheadingColor),
+      normalizeOptionalColor(data.homepageEyebrowColor),
+      normalizeOptionalColor(data.homepageNavColor)
     )
     .run();
-  return data;
+  return {
+    ...data,
+    homepageHeadingColor: normalizeOptionalColor(data.homepageHeadingColor) || undefined,
+    homepageSubheadingColor: normalizeOptionalColor(data.homepageSubheadingColor) || undefined,
+    homepageEyebrowColor: normalizeOptionalColor(data.homepageEyebrowColor) || undefined,
+    homepageNavColor: normalizeOptionalColor(data.homepageNavColor) || undefined,
+  };
 }
 
 export async function getSEOSettings(): Promise<SEOSettings> {
@@ -648,16 +686,6 @@ export async function getBookingById(
     .bind(id, id)
     .first<Row>();
   return r ? rowToBooking(r) : undefined;
-}
-
-/** Reads the stored access token; never exposed through any public payload. */
-export async function getBookingAccessToken(id: string): Promise<string | undefined> {
-  const db = await getDB();
-  const r = await db
-    .prepare("SELECT access_token FROM bookings WHERE (id = ? OR booking_id = ?) LIMIT 1")
-    .bind(id, id)
-    .first<Row>();
-  return (r?.access_token as string) || undefined;
 }
 
 function generateBookingCode(): string {
@@ -1287,8 +1315,8 @@ export async function createBanner(data: Omit<Banner, "id" | "updatedAt">): Prom
   const ts = nowIso();
   await db
     .prepare(
-      `INSERT INTO banners (id, heading, description, cta_text, cta_url, media_type, image_url, video_url, poster_url, video_autoplay, video_muted, video_loop, video_controls, published, display_order, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO banners (id, heading, description, cta_text, cta_url, media_type, image_url, video_url, poster_url, video_autoplay, video_muted, video_loop, video_controls, focal_x, focal_y, published, display_order, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
       id,
@@ -1304,12 +1332,20 @@ export async function createBanner(data: Omit<Banner, "id" | "updatedAt">): Prom
       data.videoMuted ? 1 : 0,
       data.videoLoop ? 1 : 0,
       data.videoControls ? 1 : 0,
+      clampFocal(data.focalX),
+      clampFocal(data.focalY),
       data.published ? 1 : 0,
       data.displayOrder,
       ts
     )
     .run();
-  return { ...data, id, updatedAt: ts };
+  return {
+    ...data,
+    focalX: clampFocal(data.focalX),
+    focalY: clampFocal(data.focalY),
+    id,
+    updatedAt: ts,
+  };
 }
 
 export async function updateBanner(id: string, data: Partial<Banner>): Promise<Banner | null> {
@@ -1319,7 +1355,7 @@ export async function updateBanner(id: string, data: Partial<Banner>): Promise<B
   const db = await getDB();
   await db
     .prepare(
-      `UPDATE banners SET heading=?, description=?, cta_text=?, cta_url=?, media_type=?, image_url=?, video_url=?, poster_url=?, video_autoplay=?, video_muted=?, video_loop=?, video_controls=?, published=?, display_order=?, updated_at=? WHERE id=?`
+      `UPDATE banners SET heading=?, description=?, cta_text=?, cta_url=?, media_type=?, image_url=?, video_url=?, poster_url=?, video_autoplay=?, video_muted=?, video_loop=?, video_controls=?, focal_x=?, focal_y=?, published=?, display_order=?, updated_at=? WHERE id=?`
     )
     .bind(
       merged.heading,
@@ -1335,13 +1371,20 @@ export async function updateBanner(id: string, data: Partial<Banner>): Promise<B
       merged.videoAutoplay || merged.videoMuted ? 1 : 0,
       merged.videoLoop ? 1 : 0,
       merged.videoControls ? 1 : 0,
+      clampFocal(merged.focalX),
+      clampFocal(merged.focalY),
       merged.published ? 1 : 0,
       merged.displayOrder,
       merged.updatedAt,
       id
     )
     .run();
-  return { ...merged, videoMuted: merged.videoAutoplay ? true : merged.videoMuted };
+  return {
+    ...merged,
+    focalX: clampFocal(merged.focalX),
+    focalY: clampFocal(merged.focalY),
+    videoMuted: merged.videoAutoplay ? true : merged.videoMuted,
+  };
 }
 
 export async function deleteBanner(id: string): Promise<boolean> {

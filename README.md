@@ -143,6 +143,110 @@ bookings, so a 10:00–13:00 window will never offer 12:30 for a 60-minute packa
 Set the timezone your windows are expressed in under Admin → Settings → Site
 (default `Asia/Kolkata`).
 
+## Redeploying from a GitHub Codespace terminal
+
+This is the short loop for pushing an updated copy of this project live. Run
+everything from the repository root in the Codespace terminal.
+
+### 1. Get the code in place
+
+If you downloaded a ZIP, unzip it over your repo so the files are replaced, then
+check what changed before committing anything:
+
+```bash
+git status
+git diff --stat
+```
+
+### 2. Install and log in
+
+```bash
+npm install
+npx wrangler login       # opens a browser tab; approve, then return here
+npx wrangler whoami      # confirm the right Cloudflare account
+```
+
+In a Codespace `wrangler login` cannot always open a browser. If it hangs, use
+an API token instead:
+
+```bash
+export CLOUDFLARE_API_TOKEN=your_token_here
+npx wrangler whoami
+```
+
+Create that token in the Cloudflare dashboard with the *Edit Cloudflare Workers*
+template, plus D1 and R2 read/write.
+
+### 3. Apply the database migrations
+
+This deploy adds `migrations/0004_focal_and_homepage_colors.sql`. Migrations are
+additive and safe to re-run — already-applied ones are skipped.
+
+```bash
+# see what would run
+npx wrangler d1 migrations list dukh-dealer-db --remote
+
+# apply to the live database
+npm run db:migrate:remote
+```
+
+**Do this before deploying the code.** The new code reads `banners.focal_x`,
+`theme_settings.homepage_heading_color` and friends; if the columns are missing,
+those reads fail.
+
+### 4. Check it builds before you deploy
+
+```bash
+npx tsc --noEmit         # type check
+npm run lint             # lint
+npm run build            # production build
+```
+
+Fix anything that fails here — a broken build will not deploy cleanly.
+
+### 5. Deploy
+
+```bash
+npm run deploy
+```
+
+Wrangler prints the deployment URL when it finishes.
+
+### 6. Verify on the live site
+
+In this order, because each step depends on the previous one:
+
+```text
+1. /api/favicon                 -> returns an image (your uploaded one, or the default)
+2. hard-reload the homepage     -> tab icon is correct
+3. Admin > Theme                -> set Homepage Heading, save, reload homepage
+4. Admin > Banners              -> click the image to set a focal point, publish,
+                                   then view the homepage in a narrow window
+5. Admin > Bookings > a booking -> approve payment, save a Meet link
+6. /track                       -> enter that Booking ID, the link is there
+```
+
+### 7. Commit and push
+
+```bash
+git add -A
+git commit -m "Banner focal point, homepage text colours, favicon fix, booking tracking"
+git push
+```
+
+### If something goes wrong
+
+```bash
+npx wrangler deployments list           # recent deploys
+npx wrangler rollback                   # roll back to the previous one
+npx wrangler tail                        # live logs from the deployed Worker
+npx wrangler d1 execute dukh-dealer-db --remote \
+  --command "SELECT favicon, updated_at FROM logo_settings"
+```
+
+Migrations are additive, so a code rollback does not require a database
+rollback — the extra columns are simply unused by older code.
+
 ## Media & R2
 
 Uploads from the Admin Panel → Media go to your R2 bucket and are served back through
@@ -166,25 +270,40 @@ any public API response.
 
 ## Booking access and the Google Meet link
 
-There is no customer login, so ownership of a booking is proved with a high-entropy
-access token minted when the booking is created and returned exactly once, in the
-confirmation link (`/booking/DD-2026-XXXXX?k=...`). The browser also keeps a copy in
-`localStorage` so returning to the page on the same device still works.
+There is no customer login, so **the Booking ID is the credential**. A customer
+who has `DD-2026-8F42K` can open that booking from any device, at any time, via
+the permanent **Track Booking** page at `/track` (linked in the site header and
+footer). This is deliberate: customers need to get back into their booking after
+closing the tab, without an account or a saved link.
 
-Requesting a booking without a token still returns **200** with its status — a valid
-Booking ID never 404s — but withholds the nickname, language, conversation preference
-and the Meet link.
+`GET /api/public/bookings/<bookingId>` returns the customer view: status,
+session date/time, package/service, duration, assigned listener, amount,
+language — and the Google Meet link.
 
-The Meet link is attached to the response only when all of these are true:
+The Meet link is returned **only** when both of these are true in D1:
 
-1. the caller supplied the correct access token
-2. `payment_status = 'verified'` in D1
-3. an admin has actually saved a link on that booking
-4. the current time is inside the join window (10 minutes before the start until
-   15 minutes after the end, using the booking's own timezone)
+1. `payment_status = 'verified'` (an admin approved the payment), and
+2. an admin has actually saved a link on that booking
 
-Admins set the link on the booking detail page. Nothing about payment state or the link
-is inferred client-side.
+It is never returned before payment approval, and never for a cancelled or
+refunded booking. The payment screenshot, admin notes and customer id are never
+returned at all. Archived bookings stop resolving entirely.
+
+**Previously the link also required the join window to be open** (from ten
+minutes before the session). That is why a link an admin added days in advance
+appeared never to show up — the customer could only have seen it in those ten
+minutes. Visibility is no longer time-gated: the link shows as soon as it
+exists, so the customer can add it to their calendar. `joinWindowOpen` is still
+returned and is used only to change the wording on the page ("join when you're
+ready" vs "join at your scheduled time").
+
+> Trade-off worth knowing: because the Booking ID alone grants access, a Booking
+> ID is a secret. The generated codes are five characters from a 32-character
+> alphabet (~33 million combinations per year prefix), which is fine for this
+> use but is not the same as authentication. If you later want it stricter, each
+> booking still has an `access_token` column populated at creation — re-adding a
+> token check in `toPublicBooking()` (`src/lib/booking-access.ts`) is a
+> few-line change, but it would break the "enter just your Booking ID" flow.
 
 ## Environment / secrets reference
 
@@ -210,7 +329,89 @@ src/lib/availability.ts   Duration-aware slot computation + clash checks
 src/lib/timezone.ts       Intl-only timezone maths (no Node APIs, Workers-safe)
 src/lib/booking-access.ts Access tokens, join window, Meet-link disclosure rules
 src/components/admin/*    Admin design system: AdminButton, dialogs, form fields
+src/components/admin/FocalPointPicker.tsx  Click-to-set banner focal point
+src/app/api/favicon       Single source of truth for the site favicon
+src/app/track             Public "Track Booking / Check Booking Status" page
 ```
+
+## Banner focal point
+
+Admin Panel → Banners → edit a banner with an image: below the image you get a
+focal point picker. **Click anywhere on the image to set the focal point** — it
+also responds to tap (pointer events, so phones and tablets work), to dragging,
+and to arrow keys when focused (Shift for bigger steps).
+
+The point is stored as a percentage of the image's own width and height
+(`banners.focal_x` / `focal_y`, defaulting to dead-centre 50/50) and applied on
+the public hero as CSS `object-position`. The hero uses `object-cover`, which
+crops the image to fill the space — `object-position` decides *which* part
+survives that crop, so on a tall narrow phone the thing you clicked stays in
+frame. The editor shows a live "mobile crop preview" so you can confirm before
+publishing.
+
+For video banners the focal point applies to the poster image and to the video's
+own cropping.
+
+## Homepage header & hero text colours
+
+Admin Panel → Theme → "Homepage header & hero text" has four independent
+controls:
+
+| Control | Applies to | Falls back to |
+|---|---|---|
+| Homepage Heading | hero `<h1>` | theme Foreground / Text |
+| Homepage Subheading / Description | hero description paragraph | theme Muted |
+| Homepage Eyebrow / Label | small uppercase label above the heading | theme Accent |
+| Homepage Navigation Text | header nav links + mobile menu button | theme Muted |
+
+Each is stored in its own `theme_settings` column and sent independently, so
+setting or clearing one never changes the others. **Leave a field blank and that
+element uses the site's default theme colour** — each field has a Clear button,
+and the swatch shows the inherited colour while blank so you can see what blank
+means.
+
+Scope is deliberately narrow: these only colour homepage header/hero *text*.
+They do not touch button backgrounds, button labels, or any text on other pages
+— the navigation colour is applied only when the visitor is on `/`. "Reset to
+default" restores the brand palette and leaves these overrides alone.
+
+Non-hex values are ignored rather than stored, so a typo can't break the public
+stylesheet.
+
+## Favicon
+
+The favicon is served from one place: **`/api/favicon`**, which reads the active
+favicon from `logo_settings`, streams it out of R2, and falls back to the
+bundled `public/favicon-default.png` when nothing has been uploaded.
+
+What was wrong: the repo contained `src/app/favicon.ico`. Next's file convention
+turns that file into its own `<link rel="icon" href="/favicon.ico">` in `<head>`,
+which sat alongside — and won over — the icon set from `logo_settings` in
+`generateMetadata`. So uploads saved correctly to R2 and D1 and still never
+appeared. That file has been removed.
+
+Three things now keep it correct:
+
+- `generateMetadata` always emits `icon`, `shortcut` and `apple` pointing at
+  `/api/favicon?v=<last-save-timestamp>`
+- `next.config.ts` rewrites `/favicon.ico` → `/api/favicon`, so the request
+  browsers make on their own also gets the uploaded icon.
+  **Do not add a file at `public/favicon.ico`** — a static file takes precedence
+  over the rewrite and would reintroduce the bug. That is why the fallback is
+  named `favicon-default.png`.
+- the route responds `Cache-Control: public, max-age=0, must-revalidate` with an
+  ETag derived from the last save. Repeat visits still get a cheap `304`, but a
+  replaced icon appears immediately rather than being pinned for days.
+
+Migration `0004` also clears `logo_settings.favicon` when it holds
+`/favicon.ico` (the old seed value), because `/favicon.ico` now points at the
+favicon route and would otherwise make it redirect to itself. Uploaded favicons
+are left untouched.
+
+Browsers cache tab icons very aggressively even so. If you still see the old one
+after deploying, hard-reload (Ctrl/Cmd+Shift+R) or open the site in a private
+window; visiting `/api/favicon` directly shows you what the server is actually
+serving.
 
 ## Admin Panel on mobile
 
@@ -241,8 +442,9 @@ deletion, availability, package, banner, logo, theme and CMS edits) writes to
 ## Caching
 
 The root layout, homepage and public pages are `force-dynamic` and read D1 per request,
-so a CMS change is visible immediately. Logo and favicon URLs carry a `?v=` stamp derived
-from the last save, because browsers cache favicons hard enough to keep showing a
+so a CMS change is visible immediately. The logo URL carries a `?v=` stamp derived from
+the last save; the favicon is served from `/api/favicon` with a `?v=` stamp and
+`must-revalidate` + ETag, because browsers cache tab icons hard enough to keep showing a
 replaced one. Uploaded CMS media is served `immutable` — safe because each upload gets a
 fresh UUID key, so a replacement is a different URL. Booking, payment and audit responses
 are `private, no-store`.

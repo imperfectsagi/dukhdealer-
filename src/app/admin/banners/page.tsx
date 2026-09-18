@@ -5,6 +5,7 @@ import { useRequireAdmin } from "@/lib/use-require-admin";
 import AdminButton from "@/components/admin/AdminButton";
 import { ConfirmDialog } from "@/components/admin/AdminDialog";
 import MediaField from "@/components/admin/MediaField";
+import FocalPointPicker from "@/components/admin/FocalPointPicker";
 import {
   AdminCard,
   AdminPageHeader,
@@ -33,6 +34,8 @@ const EMPTY: Draft = {
   videoMuted: true,
   videoLoop: true,
   videoControls: false,
+  focalX: 50,
+  focalY: 50,
   published: false,
   displayOrder: 1,
 };
@@ -210,11 +213,21 @@ export default function AdminBannersPage() {
             />
 
             {draft.mediaType === "image" && (
-              <MediaField
-                label="Banner image"
-                value={draft.imageUrl}
-                onChange={(url) => setDraft({ ...draft, imageUrl: url })}
-              />
+              <div className="space-y-4">
+                <MediaField
+                  label="Banner image"
+                  value={draft.imageUrl}
+                  onChange={(url) => setDraft({ ...draft, imageUrl: url })}
+                />
+                {draft.imageUrl && (
+                  <FocalPointPicker
+                    imageUrl={draft.imageUrl}
+                    focalX={draft.focalX}
+                    focalY={draft.focalY}
+                    onChange={(focal) => setDraft({ ...draft, ...focal })}
+                  />
+                )}
+              </div>
             )}
 
             {draft.mediaType === "video" && (
@@ -233,6 +246,14 @@ export default function AdminBannersPage() {
                   onChange={(url) => setDraft({ ...draft, posterUrl: url })}
                   hint="shown while loading and if the video fails"
                 />
+                {draft.posterUrl && (
+                  <FocalPointPicker
+                    imageUrl={draft.posterUrl}
+                    focalX={draft.focalX}
+                    focalY={draft.focalY}
+                    onChange={(focal) => setDraft({ ...draft, ...focal })}
+                  />
+                )}
                 <ToggleField
                   label="Autoplay"
                   description="Browsers only autoplay muted video, so enabling autoplay forces muted playback."
@@ -314,6 +335,11 @@ export default function AdminBannersPage() {
                     <span className="rounded-full border border-[var(--admin-border)] px-2 py-0.5 text-[var(--admin-text-muted)]">
                       {b.mediaType === "none" ? "Text only" : b.mediaType}
                     </span>
+                    {b.mediaType !== "none" && (b.focalX !== 50 || b.focalY !== 50) && (
+                      <span className="rounded-full border border-[var(--admin-border)] px-2 py-0.5 text-[var(--admin-text-muted)]">
+                        focal {Math.round(b.focalX)}% / {Math.round(b.focalY)}%
+                      </span>
+                    )}
                     {b.mediaType === "video" && b.videoAutoplay && (
                       <span className="rounded-full border border-[var(--admin-border)] px-2 py-0.5 text-[var(--admin-text-muted)]">
                         autoplay · muted
@@ -332,6 +358,7 @@ export default function AdminBannersPage() {
                     src={b.posterUrl || b.imageUrl}
                     alt=""
                     className="h-16 w-24 shrink-0 rounded border border-[var(--admin-border)] object-cover"
+                    style={{ objectPosition: `${b.focalX}% ${b.focalY}%` }}
                   />
                 )}
               </div>
