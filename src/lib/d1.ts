@@ -5,6 +5,7 @@ import type {
   Listener,
   Booking,
   Review,
+  PackageReviewSummary,
   FAQ,
   BlogPost,
   SiteSettings,
@@ -133,6 +134,10 @@ function rowToReview(r: Row): Review {
     status: r.status as Review["status"],
     displayOrder: r.display_order as number,
     createdAt: r.created_at as string,
+    packageId: (r.package_id as string) || undefined,
+    bookingId: (r.booking_id as string) || undefined,
+    // Present only when the query joins packages (display only).
+    packageName: (r.package_name as string) || undefined,
   };
 }
 
@@ -185,6 +190,15 @@ function rowToBanner(r: Row): Banner {
     videoControls: !!r.video_controls,
     focalX: r.focal_x === undefined || r.focal_x === null ? 50 : (r.focal_x as number),
     focalY: r.focal_y === undefined || r.focal_y === null ? 50 : (r.focal_y as number),
+    // NULL means "inherit the desktop focal point" (see migration 0005).
+    focalXMobile:
+      r.focal_x_mobile === undefined || r.focal_x_mobile === null
+        ? undefined
+        : (r.focal_x_mobile as number),
+    focalYMobile:
+      r.focal_y_mobile === undefined || r.focal_y_mobile === null
+        ? undefined
+        : (r.focal_y_mobile as number),
     published: !!r.published,
     displayOrder: r.display_order as number,
     updatedAt: (r.updated_at as string) || undefined,
@@ -1113,13 +1127,84 @@ export async function getAuditLog(limit = 100, entityType?: string): Promise<Aud
 // Reviews
 // ============================================================
 
-export async function getReviews(publishedOnly = true): Promise<Review[]> {
+/** Reviews joined to their package so callers can show the package name. */
+const REVIEW_SELECT =
+  "SELECT r.*, p.name AS package_name FROM reviews r LEFT JOIN packages p ON p.id = r.package_id";
+
+const REVIEW_ORDER = "ORDER BY r.display_order ASC, r.created_at DESC";
+
+/**
+ * Reviews list.
+ *
+ * `options.packageId` scopes the list to one package by its real package ID:
+ *   - a package ID  -> only that package's reviews
+ *   - null          -> only site-wide reviews (no package attached)
+ *   - undefined     -> everything
+ *
+ * Package names are never used as the relationship; `package_name` in the
+ * result is a display-only join.
+ */
+export async function getReviews(
+  publishedOnly = true,
+  options: { packageId?: string | null } = {}
+): Promise<Review[]> {
   const db = await getDB();
-  const q = publishedOnly
-    ? "SELECT * FROM reviews WHERE status = 'published' ORDER BY display_order ASC"
-    : "SELECT * FROM reviews ORDER BY display_order ASC";
-  const { results } = await db.prepare(q).all<Row>();
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
+  if (publishedOnly) where.push("r.status = 'published'");
+  if (options.packageId === null) {
+    where.push("r.package_id IS NULL");
+  } else if (typeof options.packageId === "string") {
+    where.push("r.package_id = ?");
+    binds.push(options.packageId);
+  }
+
+  const q = `${REVIEW_SELECT} ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ${REVIEW_ORDER}`;
+  const { results } = await db.prepare(q).bind(...binds).all<Row>();
   return (results || []).map(rowToReview);
+}
+
+/** Published reviews for one package, by package ID. */
+export async function getPackageReviews(packageId: string, publishedOnly = true): Promise<Review[]> {
+  return getReviews(publishedOnly, { packageId });
+}
+
+/**
+ * Average rating + review count per package, computed ONLY from published
+ * reviews that belong to that package. Keyed by package ID.
+ */
+export async function getPackageReviewSummaries(): Promise<Record<string, PackageReviewSummary>> {
+  const db = await getDB();
+  const { results } = await db
+    .prepare(
+      `SELECT package_id, COUNT(*) AS c, AVG(rating) AS a
+         FROM reviews
+        WHERE status = 'published' AND package_id IS NOT NULL
+        GROUP BY package_id`
+    )
+    .all<Row>();
+  const out: Record<string, PackageReviewSummary> = {};
+  for (const row of results || []) {
+    const packageId = row.package_id as string;
+    const count = Number(row.c) || 0;
+    out[packageId] = {
+      packageId,
+      count,
+      average: count ? Math.round((Number(row.a) || 0) * 10) / 10 : 0,
+    };
+  }
+  return out;
+}
+
+/** One review per booking: used to stop a customer reviewing the same order twice. */
+export async function getReviewByBookingId(bookingId: string): Promise<Review | undefined> {
+  const db = await getDB();
+  const r = await db
+    .prepare(`${REVIEW_SELECT} WHERE r.booking_id = ? LIMIT 1`)
+    .bind(bookingId)
+    .first<Row>();
+  return r ? rowToReview(r) : undefined;
 }
 
 export async function createReview(data: Omit<Review, "id" | "createdAt">): Promise<Review> {
@@ -1128,9 +1213,20 @@ export async function createReview(data: Omit<Review, "id" | "createdAt">): Prom
   const ts = nowIso();
   await db
     .prepare(
-      `INSERT INTO reviews (id, display_name, text, avatar, rating, status, display_order, created_at) VALUES (?,?,?,?,?,?,?,?)`
+      `INSERT INTO reviews (id, display_name, text, avatar, rating, status, display_order, created_at, package_id, booking_id) VALUES (?,?,?,?,?,?,?,?,?,?)`
     )
-    .bind(id, data.displayName, data.text, data.avatar || null, data.rating, data.status, data.displayOrder, ts)
+    .bind(
+      id,
+      data.displayName,
+      data.text,
+      data.avatar || null,
+      data.rating,
+      data.status,
+      data.displayOrder,
+      ts,
+      data.packageId || null,
+      data.bookingId || null
+    )
     .run();
   return { ...data, id, createdAt: ts };
 }
@@ -1142,9 +1238,19 @@ export async function updateReview(id: string, data: Partial<Review>): Promise<R
   const merged = { ...rowToReview(r), ...data };
   await db
     .prepare(
-      `UPDATE reviews SET display_name=?, text=?, avatar=?, rating=?, status=?, display_order=? WHERE id=?`
+      `UPDATE reviews SET display_name=?, text=?, avatar=?, rating=?, status=?, display_order=?, package_id=?, booking_id=? WHERE id=?`
     )
-    .bind(merged.displayName, merged.text, merged.avatar || null, merged.rating, merged.status, merged.displayOrder, id)
+    .bind(
+      merged.displayName,
+      merged.text,
+      merged.avatar || null,
+      merged.rating,
+      merged.status,
+      merged.displayOrder,
+      merged.packageId || null,
+      merged.bookingId || null,
+      id
+    )
     .run();
   return merged;
 }
@@ -1315,8 +1421,8 @@ export async function createBanner(data: Omit<Banner, "id" | "updatedAt">): Prom
   const ts = nowIso();
   await db
     .prepare(
-      `INSERT INTO banners (id, heading, description, cta_text, cta_url, media_type, image_url, video_url, poster_url, video_autoplay, video_muted, video_loop, video_controls, focal_x, focal_y, published, display_order, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO banners (id, heading, description, cta_text, cta_url, media_type, image_url, video_url, poster_url, video_autoplay, video_muted, video_loop, video_controls, focal_x, focal_y, focal_x_mobile, focal_y_mobile, published, display_order, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
       id,
@@ -1334,6 +1440,8 @@ export async function createBanner(data: Omit<Banner, "id" | "updatedAt">): Prom
       data.videoControls ? 1 : 0,
       clampFocal(data.focalX),
       clampFocal(data.focalY),
+      data.focalXMobile == null ? null : clampFocal(data.focalXMobile),
+      data.focalYMobile == null ? null : clampFocal(data.focalYMobile),
       data.published ? 1 : 0,
       data.displayOrder,
       ts
@@ -1343,6 +1451,8 @@ export async function createBanner(data: Omit<Banner, "id" | "updatedAt">): Prom
     ...data,
     focalX: clampFocal(data.focalX),
     focalY: clampFocal(data.focalY),
+    focalXMobile: data.focalXMobile == null ? undefined : clampFocal(data.focalXMobile),
+    focalYMobile: data.focalYMobile == null ? undefined : clampFocal(data.focalYMobile),
     id,
     updatedAt: ts,
   };
@@ -1355,7 +1465,7 @@ export async function updateBanner(id: string, data: Partial<Banner>): Promise<B
   const db = await getDB();
   await db
     .prepare(
-      `UPDATE banners SET heading=?, description=?, cta_text=?, cta_url=?, media_type=?, image_url=?, video_url=?, poster_url=?, video_autoplay=?, video_muted=?, video_loop=?, video_controls=?, focal_x=?, focal_y=?, published=?, display_order=?, updated_at=? WHERE id=?`
+      `UPDATE banners SET heading=?, description=?, cta_text=?, cta_url=?, media_type=?, image_url=?, video_url=?, poster_url=?, video_autoplay=?, video_muted=?, video_loop=?, video_controls=?, focal_x=?, focal_y=?, focal_x_mobile=?, focal_y_mobile=?, published=?, display_order=?, updated_at=? WHERE id=?`
     )
     .bind(
       merged.heading,
@@ -1373,6 +1483,8 @@ export async function updateBanner(id: string, data: Partial<Banner>): Promise<B
       merged.videoControls ? 1 : 0,
       clampFocal(merged.focalX),
       clampFocal(merged.focalY),
+      merged.focalXMobile == null ? null : clampFocal(merged.focalXMobile),
+      merged.focalYMobile == null ? null : clampFocal(merged.focalYMobile),
       merged.published ? 1 : 0,
       merged.displayOrder,
       merged.updatedAt,
@@ -1383,6 +1495,8 @@ export async function updateBanner(id: string, data: Partial<Banner>): Promise<B
     ...merged,
     focalX: clampFocal(merged.focalX),
     focalY: clampFocal(merged.focalY),
+    focalXMobile: merged.focalXMobile == null ? undefined : clampFocal(merged.focalXMobile),
+    focalYMobile: merged.focalYMobile == null ? undefined : clampFocal(merged.focalYMobile),
     videoMuted: merged.videoAutoplay ? true : merged.videoMuted,
   };
 }

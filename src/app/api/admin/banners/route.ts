@@ -37,6 +37,9 @@ export async function POST(req: NextRequest) {
       videoControls: body.videoControls ?? false,
       focalX: body.focalX ?? 50,
       focalY: body.focalY ?? 50,
+      // null / omitted means "mobile inherits the desktop focal point".
+      focalXMobile: body.focalXMobile ?? null,
+      focalYMobile: body.focalYMobile ?? null,
       published: body.published ?? false,
       displayOrder: body.displayOrder ?? existing.length + 1,
     });

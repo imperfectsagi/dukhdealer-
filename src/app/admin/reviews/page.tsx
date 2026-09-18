@@ -4,7 +4,7 @@ import { useRequireAdmin } from "@/lib/use-require-admin";
 import { useEffect, useState } from "react";
 import AdminButton from "@/components/admin/AdminButton";
 import { ConfirmDialog } from "@/components/admin/AdminDialog";
-import type { Review } from "@/types";
+import type { Package, Review } from "@/types";
 
 const emptyForm: Omit<Review, "id" | "createdAt"> = {
   displayName: "",
@@ -12,11 +12,14 @@ const emptyForm: Omit<Review, "id" | "createdAt"> = {
   rating: 5,
   status: "draft",
   displayOrder: 1,
+  // Empty = site-wide review (homepage strip). Otherwise the package's real ID.
+  packageId: "",
 };
 
 export default function AdminReviewsPage() {
   const authChecked = useRequireAdmin();
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Review | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [editing, setEditing] = useState<Review | null>(null);
@@ -31,9 +34,29 @@ export default function AdminReviewsPage() {
 
   useEffect(load, []);
 
+  // Package list drives the "which package is this review for?" selector.
+  useEffect(() => {
+    fetch("/api/admin/packages")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setPackages(data as Package[]))
+      .catch(() => setPackages([]));
+  }, []);
+
+  const packageName = (id?: string) =>
+    (id && packages.find((p) => p.id === id)?.name) || undefined;
+
   const startEdit = (r: Review) => {
     setEditing(r);
-    setForm(r);
+    setForm({
+      displayName: r.displayName,
+      text: r.text,
+      avatar: r.avatar,
+      rating: r.rating,
+      status: r.status,
+      displayOrder: r.displayOrder,
+      packageId: r.packageId || "",
+      bookingId: r.bookingId,
+    });
     setCreating(false);
   };
 
@@ -112,6 +135,25 @@ export default function AdminReviewsPage() {
             value={form.text}
             onChange={(e) => setForm({ ...form, text: e.target.value })}
           />
+          <label className="block text-xs text-[var(--admin-text-muted)]">
+            Package
+            <select
+              className="mt-1 w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-sm"
+              value={form.packageId || ""}
+              onChange={(e) => setForm({ ...form, packageId: e.target.value })}
+            >
+              <option value="">Site-wide (no package)</option>
+              {packages.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-[11px] text-[var(--admin-text-muted)]">
+              A package review shows only on that package and counts only towards its rating.
+            </span>
+          </label>
+
           <div className="flex flex-wrap gap-3">
             <label className="text-xs text-[var(--admin-text-muted)] flex-1">
               Rating (1–5)
@@ -170,6 +212,14 @@ export default function AdminReviewsPage() {
                 >
                   {r.status}
                 </span>
+                <span className="text-xs text-[var(--admin-text-muted)]">
+                  {r.packageId
+                    ? packageName(r.packageId) || r.packageName || r.packageId
+                    : "Site-wide"}
+                </span>
+                {r.bookingId && (
+                  <span className="text-xs text-[var(--admin-text-muted)]">· {r.bookingId}</span>
+                )}
               </div>
               <p className="text-sm text-[var(--admin-text-muted)] mt-1">{r.text}</p>
             </div>

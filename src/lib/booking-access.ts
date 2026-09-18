@@ -113,6 +113,7 @@ export function toPublicBooking(
 
   const payload: PublicBooking = {
     bookingId: booking.bookingId,
+    packageId: booking.packageId,
     packageName: booking.packageName,
     serviceType: booking.serviceType,
     duration: booking.duration,

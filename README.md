@@ -28,6 +28,104 @@ Focus: listening, conversation, talking, being heard.
 > It still works and is actively maintained — but if you start a *new* Cloudflare + Next.js
 > project from scratch later, it's worth checking whether vinext has become the better default.
 
+## This update — mobile hero, section order, package reviews
+
+Three changes, all additive. Desktop layout, colours, typography, buttons and
+branding are untouched.
+
+**1. Full-size mobile hero.** On phones the hero now fills the viewport below the
+sticky header; from `sm:` (640px) up it keeps its original desktop height.
+- `src/components/public/BannerHero.tsx` — publishes the focal point as CSS
+  variables and applies `.hero-full` / `.hero-media`.
+- `src/app/globals.css` (bottom) — `.hero-full` uses `min-height: calc(100svh - 4rem)`
+  (4rem = header height), released at `min-width: 640px`. `.hero-media` sets
+  `object-fit: cover` plus the responsive `object-position`.
+- The **image and the video use the same class and the same focal variables**, so
+  the two versions can never be framed differently. The video `poster` is
+  cropped the same way, so there are no black bars while it loads.
+- Full height applies only when the banner actually has media, so a text-only
+  banner does not become a screen of empty background.
+
+**2. Hero focal point (where to adjust the crop).** Admin Panel → **Banners** →
+edit a banner → *Focal point (desktop)*; click the artwork to pin the subject.
+Because the mobile hero crops much more tightly, there is also a toggle,
+**"Use a different focal point on mobile"**, with its own picker and a
+full-height phone crop preview. Leave it off and mobile inherits the desktop
+point. Stored as `banners.focal_x/focal_y` and `banners.focal_x_mobile/focal_y_mobile`
+(NULL = inherit), rendered as CSS `object-position`.
+
+**3. Home page section order.** Sections are rendered independently from a keyed
+map in `src/app/page.tsx`; the vertical order is the array in
+`src/config/home-sections.ts`:
+
+```ts
+export const HOME_SECTION_ORDER: HomeSectionKey[] = [
+  "hero", "howItWorks", "conversationTypes", "packages",
+  "mysteryMask", "reviews", "faq", "instagram", "finalCta",
+];
+```
+
+Reorder = move keys. Hide a section = remove its key. Add a section = add the key
+to `HomeSectionKey`, add an entry to the `sections` record in `src/app/page.tsx`,
+then list it in the array. No JSX has to move.
+
+**4. Package-specific reviews.** A review belongs to at most one package, by
+**package ID** (`reviews.package_id` → `packages.id`) — never by name.
+- `package_id = NULL` means a site-wide review (the original seeded ones), which
+  is what the homepage "What people say" strip shows alongside package reviews.
+- Average rating and review count per package are computed **only** from that
+  package's published reviews (`getPackageReviewSummaries` in `src/lib/d1.ts`).
+- Shown on `/packages` cards, on the homepage packages preview, and in full on the
+  new package page `/packages/[id]`.
+- Admin Panel → **Reviews** now has a **Package** selector ("Site-wide (no package)"
+  or a specific package) and shows each review's package and source booking.
+
+**5. Customer review submission.** `/packages/[id]` has a review form; the booking
+confirmation page links to it once payment is verified. There is no customer login
+in this product, so the existing credential is used: the **Booking ID**.
+`POST /api/public/reviews` (`{ bookingId, rating, text, displayName? }`):
+- the booking must exist and its payment must be `verified`
+- the package is taken from that **booking's** `package_id`, not from the request
+- one review per booking (unique index on `reviews.booking_id`)
+- saved with the existing moderation status `draft`, so it only appears publicly
+  after an admin publishes it in Admin → Reviews.
+
+`GET /api/public/reviews?packageId=<id>` returns that package's published reviews
+plus its own average/count.
+
+### Required database migration
+
+```bash
+npx wrangler d1 migrations apply dukh-dealer-db --remote   # or --local for dev
+```
+
+`migrations/0005_mobile_focal_and_package_reviews.sql` adds
+`banners.focal_x_mobile`, `banners.focal_y_mobile`, `reviews.package_id`,
+`reviews.booking_id` and their indexes. It is additive and safe to run on a live
+database (no data is dropped or rewritten).
+
+### Environment variables
+
+Unchanged — see *Environment / secrets reference* below. Nothing new is required.
+
+### Build & deploy
+
+```bash
+npm install
+npm run build        # next build (type-check + lint)
+npm run deploy       # opennextjs-cloudflare build && deploy
+```
+
+### Quick verification checklist
+
+- Mobile hero (image) fills the screen, subject stays in frame, no overflow
+- Mobile hero (video) uses the same framing as the image; poster shows no bars
+- Desktop hero unchanged
+- `/packages` and `/packages/[id]` show only that package's rating/reviews
+- Review form rejects an unknown or unverified Booking ID, and a second review
+  for the same booking
+- Reordering `HOME_SECTION_ORDER` reorders the home page
+
 ## What changed from the original Part 1 scaffold
 
 The zip this was built from was a frontend-only prototype: all content lived in an
@@ -350,7 +448,15 @@ frame. The editor shows a live "mobile crop preview" so you can confirm before
 publishing.
 
 For video banners the focal point applies to the poster image and to the video's
-own cropping.
+own cropping — image and video share one focal point by design, so they are
+always framed identically.
+
+Because the mobile hero is now full-height, it crops harder than the desktop
+hero. The picker therefore has a second, optional point: toggle **"Use a
+different focal point on mobile"** to pin a separate anchor for phones
+(`banners.focal_x_mobile` / `focal_y_mobile`; NULL = inherit the desktop point).
+Both points feed the `--hero-focal` / `--hero-focal-mobile` CSS variables that
+`.hero-media` in `src/app/globals.css` reads.
 
 ## Homepage header & hero text colours
 

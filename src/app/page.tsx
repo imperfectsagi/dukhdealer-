@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { Fragment, type ReactNode } from "react";
 import Button from "@/components/ui/Button";
 import BannerHero from "@/components/public/BannerHero";
 import {
   getBanners,
   getCTABlocks,
   getFAQs,
+  getPackageReviewSummaries,
   getPackages,
   getReviews,
   getSiteSettings,
@@ -12,11 +14,13 @@ import {
 } from "@/lib/d1";
 import { formatCurrency } from "@/lib/utils";
 import { SERVICE_TYPE_LABELS as LABELS } from "@/types";
+import { HOME_SECTION_ORDER, type HomeSectionKey } from "@/config/home-sections";
+import PackageRating from "@/components/public/PackageRating";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [pkgs, revs, faqList, banners, ctaBlocks, site, theme] = await Promise.all([
+  const [pkgs, revs, faqList, banners, ctaBlocks, site, theme, reviewSummaries] = await Promise.all([
     getPackages(true),
     getReviews(true),
     getFAQs(true),
@@ -24,6 +28,7 @@ export default async function HomePage() {
     getCTABlocks(true),
     getSiteSettings(),
     getThemeSettings(),
+    getPackageReviewSummaries(),
   ]);
 
   // Highest-priority published banner drives the hero.
@@ -39,9 +44,15 @@ export default async function HomePage() {
     }
   })();
 
-  return (
-    <div className="animate-fade-in">
-      {/* Hero — heading/description/CTA/media all come from Admin > Banners */}
+  /**
+   * Each home page section is built independently and stored under its key.
+   * The vertical order comes from HOME_SECTION_ORDER in
+   * src/config/home-sections.ts — reordering the home page is an edit to that
+   * array, nothing here has to move.
+   */
+  const sections: Record<HomeSectionKey, ReactNode> = {
+    /* Hero — heading/description/CTA/media all come from Admin > Banners */
+    hero: (
       <BannerHero
         banner={banner}
         eyebrow="Private conversations"
@@ -62,8 +73,10 @@ export default async function HomePage() {
         subheadingColor={theme.homepageSubheadingColor}
         eyebrowColor={theme.homepageEyebrowColor}
       />
+    ),
 
-      {/* How it works */}
+    /* How it works */
+    howItWorks: (
       <section className="py-16 sm:py-20 border-b border-[var(--color-border)]">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-12">
@@ -87,8 +100,10 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+    ),
 
-      {/* Conversation types */}
+    /* Conversation types */
+    conversationTypes: (
       <section className="py-16 sm:py-20 border-b border-[var(--color-border)]">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-4">
@@ -123,8 +138,10 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+    ),
 
-      {/* Packages preview */}
+    /* Packages preview — rating comes from that package's own reviews only */
+    packages: (
       <section className="py-16 sm:py-20 border-b border-[var(--color-border)]">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-12">
@@ -142,6 +159,7 @@ export default async function HomePage() {
                   </span>
                 )}
                 <h3 className="text-lg font-medium">{pkg.name}</h3>
+                <PackageRating summary={reviewSummaries[pkg.id]} className="mt-2" />
                 <p className="mt-2 text-sm text-[var(--color-muted)] flex-1">{pkg.description}</p>
                 <p className="mt-4 text-sm text-[var(--color-muted)]">
                   {LABELS[pkg.serviceType]} · {pkg.duration} min
@@ -151,6 +169,12 @@ export default async function HomePage() {
                 </p>
                 <Link href={`/booking?package=${pkg.id}`} className="mt-4">
                   <Button className="w-full">{pkg.ctaText}</Button>
+                </Link>
+                <Link
+                  href={`/packages/${pkg.id}`}
+                  className="mt-2 text-center text-xs text-[var(--color-muted)] hover:underline"
+                >
+                  Details & reviews
                 </Link>
               </div>
             ))}
@@ -162,8 +186,10 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+    ),
 
-      {/* Mystery mask */}
+    /* Mystery mask */
+    mysteryMask: (
       <section className="py-16 sm:py-20 border-b border-[var(--color-border)]">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 text-center">
           <h2 className="text-2xl sm:text-3xl font-semibold mb-4">The mystery mask</h2>
@@ -173,15 +199,17 @@ export default async function HomePage() {
           </p>
         </div>
       </section>
+    ),
 
-      {/* Reviews */}
+    /* Reviews */
+    reviews: (
       <section className="py-16 sm:py-20 border-b border-[var(--color-border)]">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-12">
             What people say
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {revs.map((r) => (
+            {revs.slice(0, 6).map((r) => (
               <div
                 key={r.id}
                 className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-6"
@@ -190,14 +218,19 @@ export default async function HomePage() {
                   {"★".repeat(r.rating)}
                 </div>
                 <p className="text-sm text-[var(--color-foreground)] leading-relaxed">&ldquo;{r.text}&rdquo;</p>
-                <p className="mt-4 text-xs text-[var(--color-muted)]">— {r.displayName}</p>
+                <p className="mt-4 text-xs text-[var(--color-muted)]">
+                  — {r.displayName}
+                  {r.packageName ? ` · ${r.packageName}` : ""}
+                </p>
               </div>
             ))}
           </div>
         </div>
       </section>
+    ),
 
-      {/* FAQ preview */}
+    /* FAQ preview */
+    faq: (
       <section className="py-16 sm:py-20 border-b border-[var(--color-border)]">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-12">FAQ</h2>
@@ -217,26 +250,28 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+    ),
 
-      {/* Instagram CTA — URL, copy and visibility from Admin > Instagram.
-          Instagram is a follow CTA only; booking stays on this site. */}
-      {instagramActive && (
-        <section className="border-b border-[var(--color-border)] py-12">
-          <div className="mx-auto max-w-6xl px-4 text-center sm:px-6">
-            <p className="mb-3 text-sm text-[var(--color-muted)]">Follow for quiet updates</p>
-            <a
-              href={site.instagramUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-h-11 items-center text-sm font-medium text-[var(--color-primary)] hover:underline"
-            >
-              {site.instagramCtaText || `${instagramHandle} on Instagram`}
-            </a>
-          </div>
-        </section>
-      )}
+    /* Instagram CTA — URL, copy and visibility from Admin > Instagram.
+       Instagram is a follow CTA only; booking stays on this site. */
+    instagram: instagramActive ? (
+      <section className="border-b border-[var(--color-border)] py-12">
+        <div className="mx-auto max-w-6xl px-4 text-center sm:px-6">
+          <p className="mb-3 text-sm text-[var(--color-muted)]">Follow for quiet updates</p>
+          <a
+            href={site.instagramUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-[var(--color-primary)] hover:underline"
+          >
+            {site.instagramCtaText || `${instagramHandle} on Instagram`}
+          </a>
+        </div>
+      </section>
+    ) : null,
 
-      {/* Final CTA — from Admin > CTA block when one is enabled */}
+    /* Final CTA — from Admin > CTA block when one is enabled */
+    finalCta: (
       <section className="py-16 sm:py-24">
         <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
           <h2 className="mb-4 text-2xl font-semibold sm:text-3xl">
@@ -252,6 +287,14 @@ export default async function HomePage() {
           </Link>
         </div>
       </section>
+    ),
+  };
+
+  return (
+    <div className="animate-fade-in">
+      {HOME_SECTION_ORDER.map((key) => (
+        <Fragment key={key}>{sections[key]}</Fragment>
+      ))}
     </div>
   );
 }

@@ -36,9 +36,74 @@ const EMPTY: Draft = {
   videoControls: false,
   focalX: 50,
   focalY: 50,
+  // null = mobile inherits the desktop focal point.
+  focalXMobile: null,
+  focalYMobile: null,
   published: false,
   displayOrder: 1,
 };
+
+/**
+ * Desktop + optional mobile focal point for one banner.
+ *
+ * The public hero uses the desktop point on wide screens and the mobile point
+ * (when set) on phones, where the hero is full-height and crops much harder.
+ * Both the hero image and the hero video read the same values, so the two
+ * versions can never end up framed differently.
+ */
+function HeroFocalControls({
+  imageUrl,
+  draft,
+  setDraft,
+}: {
+  imageUrl: string;
+  draft: Draft;
+  setDraft: (d: Draft) => void;
+}) {
+  const mobileSet = draft.focalXMobile != null || draft.focalYMobile != null;
+  return (
+    <div className="space-y-4">
+      <FocalPointPicker
+        imageUrl={imageUrl}
+        focalX={draft.focalX}
+        focalY={draft.focalY}
+        onChange={(focal) => setDraft({ ...draft, ...focal })}
+        label="Focal point (desktop)"
+        hint="Click the image to pin the part that must stay visible. Used for both the image and the video hero."
+        previewLabel="Desktop crop preview (wide screen)"
+        preview="wide"
+      />
+
+      <ToggleField
+        label="Use a different focal point on mobile"
+        description="The mobile hero is full-height, so it crops much tighter. Turn this on if the subject needs a different anchor on phones."
+        checked={mobileSet}
+        onChange={(v) =>
+          setDraft({
+            ...draft,
+            focalXMobile: v ? draft.focalX : null,
+            focalYMobile: v ? draft.focalY : null,
+          })
+        }
+      />
+
+      {mobileSet && (
+        <FocalPointPicker
+          imageUrl={imageUrl}
+          focalX={draft.focalXMobile ?? draft.focalX}
+          focalY={draft.focalYMobile ?? draft.focalY}
+          onChange={(focal) =>
+            setDraft({ ...draft, focalXMobile: focal.focalX, focalYMobile: focal.focalY })
+          }
+          label="Focal point (mobile)"
+          hint="Click the image to pin the part that must stay visible in the full-height phone hero."
+          previewLabel="Mobile crop preview (full-height phone hero)"
+          preview="tall"
+        />
+      )}
+    </div>
+  );
+}
 
 /**
  * Banner Manager.
@@ -220,12 +285,7 @@ export default function AdminBannersPage() {
                   onChange={(url) => setDraft({ ...draft, imageUrl: url })}
                 />
                 {draft.imageUrl && (
-                  <FocalPointPicker
-                    imageUrl={draft.imageUrl}
-                    focalX={draft.focalX}
-                    focalY={draft.focalY}
-                    onChange={(focal) => setDraft({ ...draft, ...focal })}
-                  />
+                  <HeroFocalControls imageUrl={draft.imageUrl} draft={draft} setDraft={setDraft} />
                 )}
               </div>
             )}
@@ -247,12 +307,7 @@ export default function AdminBannersPage() {
                   hint="shown while loading and if the video fails"
                 />
                 {draft.posterUrl && (
-                  <FocalPointPicker
-                    imageUrl={draft.posterUrl}
-                    focalX={draft.focalX}
-                    focalY={draft.focalY}
-                    onChange={(focal) => setDraft({ ...draft, ...focal })}
-                  />
+                  <HeroFocalControls imageUrl={draft.posterUrl} draft={draft} setDraft={setDraft} />
                 )}
                 <ToggleField
                   label="Autoplay"

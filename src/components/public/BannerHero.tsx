@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import Button from "@/components/ui/Button";
 import type { Banner } from "@/types";
 
@@ -54,18 +54,40 @@ export default function BannerHero({
     banner?.mediaType === "video" ? banner.posterUrl || banner.imageUrl : banner?.imageUrl;
   const showImage = !showVideo && !!imageFallback;
 
+  // Focal point. The desktop hero is wide and short; the mobile hero is now
+  // full-height, so it crops the same artwork far more tightly. Mobile can
+  // therefore have its own point, falling back to the desktop one when unset.
+  // Both values are published as CSS variables on the section and consumed by
+  // `.hero-media` in globals.css, so the IMAGE and the VIDEO are always framed
+  // identically at every breakpoint — nothing can drift between the two.
   const focalX = banner?.focalX ?? 50;
   const focalY = banner?.focalY ?? 50;
-  const focalStyle = { objectPosition: `${focalX}% ${focalY}%` };
+  const focalMobileX = banner?.focalXMobile ?? focalX;
+  const focalMobileY = banner?.focalYMobile ?? focalY;
+  const heroVars = {
+    "--hero-focal": `${focalX}% ${focalY}%`,
+    "--hero-focal-mobile": `${focalMobileX}% ${focalMobileY}%`,
+  } as CSSProperties;
+
+  const hasMedia = showVideo || showImage;
 
   return (
-    <section className="relative overflow-hidden border-b border-[var(--color-border)]">
+    <section
+      // hero-full makes the hero fill the phone viewport (minus the sticky
+      // header) while leaving every sm: and wider layout exactly as it was.
+      // Applied only when there is artwork behind the text, so a text-only
+      // banner does not become a screen of empty background.
+      className={`relative flex overflow-hidden border-b border-[var(--color-border)] ${
+        hasMedia ? "hero-full" : ""
+      }`}
+      style={heroVars}
+    >
       {showVideo && (
         <video
           key={banner?.videoUrl}
-          className="absolute inset-0 h-full w-full object-cover"
-          // Focal point also anchors video cropping on narrow screens.
-          style={focalStyle}
+          // Same classes as the image below, so the video is cropped and
+          // anchored exactly like the image at every breakpoint.
+          className="hero-media absolute inset-0 h-full w-full object-cover"
           src={banner?.videoUrl}
           poster={banner?.posterUrl || banner?.imageUrl}
           autoPlay={banner?.videoAutoplay}
@@ -87,15 +109,15 @@ export default function BannerHero({
           src={imageFallback}
           alt=""
           aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-cover"
-          // object-cover crops to fill the hero; object-position decides WHICH
-          // part survives that crop, which is the whole point of the focal
-          // point the admin set in the Banner Manager.
-          style={focalStyle}
+          // object-cover crops to fill the hero; object-position (set by
+          // .hero-media from the --hero-focal variables above) decides WHICH
+          // part survives that crop — the whole point of the focal point the
+          // admin set in the Banner Manager.
+          className="hero-media absolute inset-0 h-full w-full object-cover"
         />
       )}
 
-      <div className="relative mx-auto max-w-6xl px-4 py-20 text-center sm:px-6 sm:py-28">
+      <div className="relative mx-auto flex w-full max-w-6xl flex-col justify-center px-4 py-20 text-center sm:px-6 sm:py-28">
         {eyebrow && (
           <p
             className="mb-4 text-sm uppercase tracking-widest"

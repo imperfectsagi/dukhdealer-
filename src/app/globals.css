@@ -263,3 +263,39 @@ body {
   }
   html { scroll-behavior: auto; }
 }
+
+/* ----------------------------------------------------------------
+   Homepage hero — mobile full-size banner
+   ----------------------------------------------------------------
+   Mobile (< 640px): the hero fills the viewport below the sticky 4rem
+   header, so the banner artwork reads as a full-screen banner instead of a
+   short strip. 100svh (small viewport height) is used so the mobile browser
+   UI bars can't push the CTA buttons off-screen; 100vh is the fallback for
+   older browsers.
+
+   sm: and up: min-height is released, so the DESKTOP hero keeps its original
+   padding-driven height. Nothing about the desktop hero changes.
+
+   .hero-media is applied to BOTH the hero <img> and the hero <video>, so the
+   image version and the video version are always cropped and anchored the
+   same way. The two variables are set inline on the hero section from the
+   banner's focal point (Admin > Banners).
+   ---------------------------------------------------------------- */
+.hero-full {
+  min-height: calc(100vh - 4rem);
+  min-height: calc(100svh - 4rem);
+}
+
+.hero-media {
+  object-fit: cover;
+  object-position: var(--hero-focal-mobile, 50% 50%);
+}
+
+@media (min-width: 640px) {
+  .hero-full {
+    min-height: 0;
+  }
+  .hero-media {
+    object-position: var(--hero-focal, 50% 50%);
+  }
+}

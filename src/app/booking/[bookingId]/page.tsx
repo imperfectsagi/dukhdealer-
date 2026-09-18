@@ -202,6 +202,18 @@ export default function BookingStatusPage() {
           </div>
         )}
 
+        {/* Review invite — only for a booking that was actually paid for. The
+            review itself is submitted against this Booking ID. */}
+        {booking.verified && booking.packageId && (
+          <p className="mb-4 text-center text-xs text-[var(--color-muted)]">
+            Had your session?{" "}
+            <Link href={`/packages/${booking.packageId}`} className="underline">
+              Leave a review for {booking.packageName}
+            </Link>
+            .
+          </p>
+        )}
+
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button
             variant="outline"

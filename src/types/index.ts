@@ -128,6 +128,8 @@ export interface Booking {
 export interface PublicBooking {
   bookingId: string;
   customerNickname?: string;
+  /** Package ID, so the customer view can link to that package (and its reviews). */
+  packageId: string;
   packageName: string;
   serviceType: ServiceType;
   duration: number;
@@ -170,6 +172,24 @@ export interface Review {
   status: "published" | "draft";
   displayOrder: number;
   createdAt: string;
+  /**
+   * The package this review is about, referenced by `packages.id` — never by
+   * package name. Undefined means the review is site-wide (the homepage
+   * "What people say" strip), which is what the original reviews were.
+   */
+  packageId?: string;
+  /** Booking the review was submitted from, i.e. proof the package was used. */
+  bookingId?: string;
+  /** Joined from `packages.name` for display only. Never written back. */
+  packageName?: string;
+}
+
+/** Published-review aggregate for one package. Computed from that package's reviews only. */
+export interface PackageReviewSummary {
+  packageId: string;
+  count: number;
+  /** Mean rating, rounded to one decimal. 0 when the package has no reviews. */
+  average: number;
 }
 
 export interface FAQ {
@@ -278,6 +298,14 @@ export interface Banner {
    */
   focalX: number;
   focalY: number;
+  /**
+   * Optional separate focal point for the full-height mobile hero, where the
+   * crop is much tighter. Undefined means "use focalX/focalY". Both the hero
+   * image and the hero video use these same values, so the two never get
+   * different framing.
+   */
+  focalXMobile?: number | null;
+  focalYMobile?: number | null;
   published: boolean;
   displayOrder: number;
   updatedAt?: string;

@@ -23,11 +23,20 @@ export default function FocalPointPicker({
   focalX,
   focalY,
   onChange,
+  label = "Focal point",
+  hint = "Click anywhere on the image to set the focal point.",
+  previewLabel = "Mobile crop preview (narrow screen)",
+  /** Aspect of the crop preview. "tall" matches the full-height mobile hero. */
+  preview = "tall",
 }: {
   imageUrl: string;
   focalX: number;
   focalY: number;
   onChange: (focal: { focalX: number; focalY: number }) => void;
+  label?: string;
+  hint?: string;
+  previewLabel?: string;
+  preview?: "tall" | "wide";
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -47,10 +56,8 @@ export default function FocalPointPicker({
 
   return (
     <div className="min-w-0">
-      <FieldLabel>Focal point</FieldLabel>
-      <p className="mb-2 text-xs text-[var(--admin-text-muted)]">
-        Click anywhere on the image to set the focal point.
-      </p>
+      <FieldLabel>{label}</FieldLabel>
+      <p className="mb-2 text-xs text-[var(--admin-text-muted)]">{hint}</p>
 
       <div
         ref={frameRef}
@@ -134,16 +141,18 @@ export default function FocalPointPicker({
       {/* Live preview of the crop a narrow phone actually gets, so the admin can
           confirm their point survives before publishing. */}
       <div className="mt-3">
-        <p className="mb-1 text-xs text-[var(--admin-text-muted)]">
-          Mobile crop preview (narrow screen)
-        </p>
-        <div className="mx-auto w-40 overflow-hidden rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface-2)]">
+        <p className="mb-1 text-xs text-[var(--admin-text-muted)]">{previewLabel}</p>
+        <div
+          className={`mx-auto overflow-hidden rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface-2)] ${
+            preview === "tall" ? "w-40" : "w-full max-w-sm"
+          }`}
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
             alt=""
             aria-hidden="true"
-            className="h-56 w-full object-cover"
+            className={`w-full object-cover ${preview === "tall" ? "h-72" : "h-28"}`}
             style={{ objectPosition: `${focalX}% ${focalY}%` }}
           />
         </div>
