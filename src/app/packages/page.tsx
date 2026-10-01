@@ -3,6 +3,7 @@ import Button from "@/components/ui/Button";
 import PackageRating from "@/components/public/PackageRating";
 import { getPackageReviewSummaries, getPackages } from "@/lib/d1";
 import { formatCurrency } from "@/lib/utils";
+import { absoluteUrl } from "@/lib/seo";
 import { SERVICE_TYPE_LABELS } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Packages | Dukh Dealer",
   description: "Choose a private conversation package.",
+  alternates: { canonical: absoluteUrl("/packages") },
 };
 
 export default async function PackagesPage() {

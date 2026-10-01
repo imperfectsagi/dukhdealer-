@@ -1,15 +1,21 @@
 import { getAboutPage, getAboutSections, getSEOSettings } from "@/lib/d1";
+import { absoluteUrl } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
   try {
     const seo = await getSEOSettings();
-    return { title: seo.about.title, description: seo.about.description };
+    return {
+      title: seo.about.title,
+      description: seo.about.description,
+      alternates: { canonical: absoluteUrl("/about") },
+    };
   } catch {
     return {
       title: "About | Dukh Dealer",
       description: "Learn what Dukh Dealer is — and what it is not.",
+      alternates: { canonical: absoluteUrl("/about") },
     };
   }
 }

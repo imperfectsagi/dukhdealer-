@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import Button from "@/components/ui/Button";
@@ -9,6 +10,7 @@ import {
   getPackageReviewSummaries,
   getPackages,
   getReviews,
+  getSEOSettings,
   getSiteSettings,
   getThemeSettings,
 } from "@/lib/d1";
@@ -16,8 +18,32 @@ import { formatCurrency } from "@/lib/utils";
 import { SERVICE_TYPE_LABELS as LABELS } from "@/types";
 import { resolveHomeSectionOrder, type HomeSectionKey } from "@/config/home-sections";
 import PackageRating from "@/components/public/PackageRating";
+import { SITE_NAME, SITE_URL, absoluteUrl } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Homepage <title>, description and canonical.
+ *
+ * Previously this page had no metadata of its own, so the tab/search title came
+ * from the layout's *global* title and the Homepage fields in Admin > SEO were
+ * only ever used for Open Graph. They now drive the real <title> and meta
+ * description, with the global values as the fallback when they are blank.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const alternates = { canonical: absoluteUrl("/") };
+  try {
+    const seo = await getSEOSettings();
+    return {
+      title: seo.homepage.title || seo.globalTitle,
+      description: seo.homepage.description || seo.globalDescription,
+      alternates,
+    };
+  } catch {
+    // D1 unreachable — keep the layout's static title/description.
+    return { alternates };
+  }
+}
 
 export default async function HomePage() {
   const [pkgs, revs, faqList, banners, ctaBlocks, site, theme, reviewSummaries] = await Promise.all([
@@ -43,6 +69,42 @@ export default async function HomePage() {
       return "Instagram";
     }
   })();
+
+  // Structured data: tells search engines that "Dukh Dealer" is the name of this
+  // organisation and website (used for the site name shown in results), and
+  // links the brand's social profiles. Not rendered visibly.
+  const siteName = site.websiteName || SITE_NAME;
+  const compactName = siteName.replace(/\s+/g, "");
+  const sameAs = Array.from(
+    new Set(
+      [
+        ...(instagramActive ? [site.instagramUrl] : []),
+        ...(site.socialLinks || []).map((l) => l.url),
+      ].filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u))
+    )
+  );
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": `${SITE_URL}/#organization`,
+        name: siteName,
+        ...(compactName !== siteName ? { alternateName: compactName } : {}),
+        url: absoluteUrl("/"),
+        ...(sameAs.length ? { sameAs } : {}),
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        url: absoluteUrl("/"),
+        name: siteName,
+        ...(compactName !== siteName ? { alternateName: compactName } : {}),
+        inLanguage: "en",
+        publisher: { "@id": `${SITE_URL}/#organization` },
+      },
+    ],
+  };
 
   // Section order comes from Admin Panel -> Home Sections; the resolver drops
   // unknown keys and appends any section the saved order doesn't mention, so
@@ -330,10 +392,17 @@ export default async function HomePage() {
   };
 
   return (
-    <div className="animate-fade-in">
-      {sectionOrder.map((key) => (
-        <Fragment key={key}>{sections[key]}</Fragment>
-      ))}
-    </div>
+    <>
+      <script
+        type="application/ld+json"
+        // "<" is escaped so no stored text can ever close the script tag early.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
+      <div className="animate-fade-in">
+        {sectionOrder.map((key) => (
+          <Fragment key={key}>{sections[key]}</Fragment>
+        ))}
+      </div>
+    </>
   );
 }

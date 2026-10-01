@@ -1,9 +1,11 @@
 import Link from "next/link";
 import Button from "@/components/ui/Button";
+import { absoluteUrl } from "@/lib/seo";
 
 export const metadata = {
   title: "Sessions | Dukh Dealer",
   description: "Private Chat, Private Voice, and Mystery Video.",
+  alternates: { canonical: absoluteUrl("/services") },
 };
 
 const services = [

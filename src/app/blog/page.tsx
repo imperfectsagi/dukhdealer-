@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { getBlogPosts } from "@/lib/d1";
+import { absoluteUrl } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Blog | Dukh Dealer",
   description: "Reflections on listening and private conversation.",
+  alternates: { canonical: absoluteUrl("/blog") },
 };
 
 export default async function BlogPage() {

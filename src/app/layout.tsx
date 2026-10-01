@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { getLogoSettings, getSEOSettings, getThemeSettings, withCacheBust } from "@/lib/d1";
+import { SITE_NAME, SITE_URL, isDuplicateHost } from "@/lib/seo";
 
 /**
  * Always rendered per-request. The header logo, favicon, theme colours and SEO
@@ -13,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   let seoMeta: Metadata = {
+    metadataBase: new URL(SITE_URL),
     title: "Dukh Dealer — A private space to be heard",
     description:
       "Private paid conversation service. Chat, voice, or mystery video with a real listener. Not therapy.",
@@ -20,6 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title: "Dukh Dealer — A private space to be heard",
       description: "Private paid conversations. Be heard without labels.",
       type: "website",
+      siteName: SITE_NAME,
     },
   };
 
@@ -28,16 +32,32 @@ export async function generateMetadata(): Promise<Metadata> {
     seoMeta = {
       title: seo.globalTitle,
       description: seo.globalDescription,
-      metadataBase: seo.canonicalBase ? new URL(seo.canonicalBase) : undefined,
+      // Always the real production domain. This used to come from the
+      // seo_settings.canonical_base row, which was seeded as the wrong domain
+      // (dukhdealer.com), so every relative metadata URL resolved against it.
+      metadataBase: new URL(SITE_URL),
       openGraph: {
         title: seo.homepage.title,
         description: seo.homepage.description,
         type: "website",
+        siteName: SITE_NAME,
         images: seo.ogImage ? [seo.ogImage] : undefined,
       },
     };
   } catch {
     // D1 not reachable (e.g. first boot before migrations) — static defaults.
+  }
+
+  // The Worker is also reachable on its own *.workers.dev address (and possibly
+  // www.), serving an identical copy of the site. Keep those copies out of the
+  // index so only the real domain can compete for "Dukh Dealer".
+  try {
+    const host = (await headers()).get("host") || "";
+    if (isDuplicateHost(host)) {
+      seoMeta.robots = { index: false, follow: false };
+    }
+  } catch {
+    // No request context (e.g. build-time render) — nothing to do.
   }
 
   // Favicon always points at /api/favicon, which resolves the active favicon

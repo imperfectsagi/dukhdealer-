@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Button from "@/components/ui/Button";
@@ -6,8 +7,34 @@ import PackageReviewForm from "@/components/public/PackageReviewForm";
 import { getPackageById, getPackageReviewSummaries, getPackageReviews } from "@/lib/d1";
 import { formatCurrency } from "@/lib/utils";
 import { SERVICE_TYPE_LABELS } from "@/types";
+import { SITE_NAME, absoluteUrl, clip } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Each package gets its own title/description/canonical. Before this, every
+ * package URL in the sitemap shared the homepage's title and description,
+ * which made them compete with the homepage for the brand search.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  try {
+    const pkg = await getPackageById(id);
+    if (!pkg || !pkg.active) return {}; // the page itself responds 404
+    return {
+      title: `${pkg.name} | ${SITE_NAME}`,
+      description:
+        clip(pkg.description) || `${pkg.name} — a private conversation package from ${SITE_NAME}.`,
+      alternates: { canonical: absoluteUrl(`/packages/${pkg.id}`) },
+    };
+  } catch {
+    return {};
+  }
+}
 
 /**
  * One package, with the reviews that belong to THAT package.
