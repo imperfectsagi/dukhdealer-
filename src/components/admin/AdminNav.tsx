@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Info,
   LayoutDashboard,
+  MousePointerClick,
   ListOrdered,
   LogOut,
   Menu,
@@ -54,6 +55,7 @@ export const NAV_GROUPS: { title: string; links: NavLink[] }[] = [
     links: [
       { href: "/admin/banners", label: "Banners", icon: PanelsTopLeft },
       { href: "/admin/home-sections", label: "Home Sections", icon: ListOrdered },
+      { href: "/admin/cta", label: "Final CTA", icon: MousePointerClick },
       { href: "/admin/about", label: "About Page", icon: Info },
       { href: "/admin/blog", label: "Blog", icon: FileText },
       { href: "/admin/faq", label: "FAQ", icon: HelpCircle },

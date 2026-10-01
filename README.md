@@ -635,3 +635,18 @@ in Google Meet via the admin-supplied link), real payment gateway integration (p
 are manual UPI + screenshot + admin verification, as the original design specified), or
 customer accounts/login. Those were out of scope for what was asked — flagging them here
 so they're not mistaken for oversights if you go looking for them.
+
+## Final CTA, button labels and homepage SEO (latest fixes)
+
+- **Admin > Final CTA** (`/admin/cta`) edits the call-to-action block at the bottom of the
+  homepage: heading, description, button text, button link and show/hide. Previously this
+  block was read from the `cta_blocks` table but had no admin screen, so its heading could not
+  be changed. No migration is needed.
+- **Admin > Settings > Site > Button labels** edits the header button and the two hero buttons
+  (`site_settings.cta_labels`). The hero main button is still overridden by the published
+  banner's own button text (Admin > Banners).
+- `www.dukhdealer.online` now 301-redirects to `https://dukhdealer.online` (middleware), so
+  Google ranks one host. `robots.txt` blocks `/admin`, `/api/` (except media and favicon) and
+  `/track`; the sitemap lists the homepage first with priority 1.
+- The hero eyebrow now carries the brand name ("Dukh Dealer · Private conversations") so the
+  homepage's visible text matches the search query "dukh dealer".

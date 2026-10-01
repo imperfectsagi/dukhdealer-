@@ -49,6 +49,12 @@ export default function AdminSettingsPage() {
 
   if (!data) return <p className="text-[var(--admin-text-muted)]">Loading…</p>;
 
+  const setCta = (key: "book" | "primary" | "secondary", value: string) =>
+    setData({
+      ...data,
+      site: { ...data.site, ctaLabels: { ...(data.site.ctaLabels || {}), [key]: value } },
+    });
+
 
   if (!authChecked) return null;
   return (
@@ -86,6 +92,13 @@ export default function AdminSettingsPage() {
             value={data.site.timezone}
             onChange={(v) => setData({ ...data, site: { ...data.site, timezone: v } })}
           />
+          <p className="pt-2 text-xs text-[var(--admin-text-muted)]">Button labels</p>
+          <Field label="Header button (top right)" value={data.site.ctaLabels?.book || ""} onChange={(v) => setCta("book", v)} />
+          <Field label="Homepage hero — main button" value={data.site.ctaLabels?.primary || ""} onChange={(v) => setCta("primary", v)} />
+          <Field label="Homepage hero — second button" value={data.site.ctaLabels?.secondary || ""} onChange={(v) => setCta("secondary", v)} />
+          <p className="text-xs text-[var(--admin-text-muted)]">
+            The hero main button text is overridden by the published banner&apos;s own button text (Admin &gt; Banners). The final call-to-action block is edited in Admin &gt; Final CTA.
+          </p>
           <Field label="Footer text" textarea value={data.site.footerText} onChange={(v) => setData({ ...data, site: { ...data.site, footerText: v } })} />
           <AdminButton size="sm" disabled={saving} onClick={() => save({ site: data.site })}>Save site settings</AdminButton>
         </div>

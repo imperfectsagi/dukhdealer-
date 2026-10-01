@@ -1537,6 +1537,41 @@ export async function getCTABlocks(enabledOnly = true): Promise<CTABlock[]> {
   return (results || []).map(rowToCTABlock);
 }
 
+/**
+ * Save the homepage "Final CTA" block (heading, text, button, link, on/off).
+ *
+ * There is one such block on the homepage. It updates the first existing row
+ * (the one the homepage reads) or creates it if the table is empty, so the
+ * admin never has to know about row ids.
+ */
+export async function saveCTABlock(data: {
+  heading: string;
+  description: string;
+  buttonText: string;
+  url: string;
+  enabled: boolean;
+}): Promise<CTABlock> {
+  const db = await getDB();
+  const [existing] = await getCTABlocks(false);
+  if (existing) {
+    await db
+      .prepare(
+        "UPDATE cta_blocks SET heading=?, description=?, button_text=?, url=?, enabled=? WHERE id=?"
+      )
+      .bind(data.heading, data.description, data.buttonText, data.url, data.enabled ? 1 : 0, existing.id)
+      .run();
+    return { ...existing, ...data };
+  }
+  const id = "cta-001";
+  await db
+    .prepare(
+      "INSERT INTO cta_blocks (id, heading, description, button_text, url, enabled, display_order) VALUES (?,?,?,?,?,?,1)"
+    )
+    .bind(id, data.heading, data.description, data.buttonText, data.url, data.enabled ? 1 : 0)
+    .run();
+  return { id, ...data, displayOrder: 1 };
+}
+
 // ---------- About page ----------
 
 export async function getAboutPage(): Promise<AboutPage> {

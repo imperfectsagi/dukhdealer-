@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_SESSION_COOKIE } from "@/lib/auth";
+import { SITE_HOST, SITE_URL } from "@/lib/seo";
 
 /**
  * Lightweight gate: redirects to /admin/login if the session cookie is
@@ -12,6 +13,13 @@ import { ADMIN_SESSION_COOKIE } from "@/lib/auth";
  */
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // www.dukhdealer.online serves an identical copy of the site, which splits
+  // Google's ranking between two hosts. Permanently send it to the real domain.
+  const host = (req.headers.get("host") || "").split(",")[0].trim().toLowerCase().replace(/:\d+$/, "");
+  if (host === `www.${SITE_HOST}`) {
+    return NextResponse.redirect(`${SITE_URL}${pathname}${req.nextUrl.search}`, 301);
+  }
 
   if (pathname === "/admin/login") {
     return NextResponse.next();
@@ -29,5 +37,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  // All pages (for the www redirect) except static assets; the admin gate
+  // above still only acts on /admin paths.
+  matcher: ["/((?!_next/static|_next/image|favicon|api/media|api/favicon).*)"],
 };

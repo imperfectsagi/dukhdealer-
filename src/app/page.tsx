@@ -51,7 +51,7 @@ export default async function HomePage() {
     getReviews(true),
     getFAQs(true),
     getBanners(true),
-    getCTABlocks(true),
+    getCTABlocks(false),
     getSiteSettings(),
     getThemeSettings(),
     getPackageReviewSummaries(),
@@ -59,7 +59,11 @@ export default async function HomePage() {
 
   // Highest-priority published banner drives the hero.
   const banner = banners[0];
-  const finalCta = ctaBlocks[0];
+  // Final CTA: the admin-saved block (Admin > Final CTA). If one exists but is
+  // switched off, the whole section is hidden; if none exists yet, the built-in
+  // default copy is shown.
+  const finalCta = ctaBlocks.find((b) => b.enabled);
+  const finalCtaHidden = ctaBlocks.length > 0 && !finalCta;
   const instagramActive = site.instagramEnabled && !!site.instagramUrl;
   const instagramHandle = (() => {
     try {
@@ -136,7 +140,7 @@ export default async function HomePage() {
     hero: (
       <BannerHero
         banner={banner}
-        eyebrow="Private conversations"
+        eyebrow={`${site.websiteName || SITE_NAME} · Private conversations`}
         fallbackHeading={site.tagline || "A private space to be heard"}
         fallbackDescription={
           site.description || "Chat. Voice. Mystery Video. Real listening — no labels, no diagnosis."
@@ -372,7 +376,7 @@ export default async function HomePage() {
     ) : null,
 
     /* Final CTA — from Admin > CTA block when one is enabled */
-    finalCta: (
+    finalCta: finalCtaHidden ? null : (
       <section className="py-16 sm:py-24">
         <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
           <h2 className="mb-4 text-2xl font-semibold sm:text-3xl">

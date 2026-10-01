@@ -1,4 +1,9 @@
 User-agent: *
 Allow: /
+Allow: /api/media/
+Allow: /api/favicon
+Disallow: /admin
+Disallow: /api/
+Disallow: /track
 
 Sitemap: https://dukhdealer.online/sitemap.xml
