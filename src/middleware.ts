@@ -21,16 +21,23 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(`${SITE_URL}${pathname}${req.nextUrl.search}`, 301);
   }
 
+  // The admin panel is never for search engines, whatever robots.txt says.
+  const noindex = (res: NextResponse) => {
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return res;
+  };
+
   if (pathname === "/admin/login") {
-    return NextResponse.next();
+    return noindex(NextResponse.next());
   }
 
   if (pathname.startsWith("/admin")) {
     const hasSession = req.cookies.has(ADMIN_SESSION_COOKIE);
     if (!hasSession) {
       const loginUrl = new URL("/admin/login", req.url);
-      return NextResponse.redirect(loginUrl);
+      return noindex(NextResponse.redirect(loginUrl));
     }
+    return noindex(NextResponse.next());
   }
 
   return NextResponse.next();

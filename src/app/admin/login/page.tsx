@@ -6,7 +6,7 @@ import AdminButton from "@/components/admin/AdminButton";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,11 +19,11 @@ export default function AdminLoginPage() {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error || "Invalid email or password");
+        setError((data as { error?: string }).error || "Invalid username or password");
         return;
       }
       router.push("/admin");
@@ -52,15 +52,17 @@ export default function AdminLoginPage() {
             </div>
           )}
           <div>
-            <label htmlFor="admin-email" className="text-xs font-medium text-[var(--admin-text-muted)]">Email</label>
+            <label htmlFor="admin-username" className="text-xs font-medium text-[var(--admin-text-muted)]">Username or email</label>
             <input
-              id="admin-email"
-              type="email"
+              id="admin-username"
+              type="text"
               required
               autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               className="mt-1"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
             />
           </div>
           <div>

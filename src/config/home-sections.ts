@@ -19,6 +19,7 @@ export type HomeSectionKey =
   | "hero"
   | "howItWorks"
   | "conversationTypes"
+  | "listeners"
   | "packages"
   | "mysteryMask"
   | "reviews"
@@ -31,6 +32,7 @@ export const HOME_SECTION_ORDER: HomeSectionKey[] = [
   "hero",
   "howItWorks",
   "conversationTypes",
+  "listeners",
   "packages",
   "mysteryMask",
   "reviews",
@@ -44,6 +46,7 @@ export const HOME_SECTION_LABELS: Record<HomeSectionKey, string> = {
   hero: "Hero banner",
   howItWorks: "How it works",
   conversationTypes: "Conversation types",
+  listeners: "Listeners",
   packages: "Packages",
   mysteryMask: "The mystery mask",
   reviews: "Reviews",
@@ -60,7 +63,7 @@ function isHomeSectionKey(value: string): value is HomeSectionKey {
  * Turn a stored order into a safe, complete list of section keys:
  *   - unknown / renamed keys are dropped
  *   - duplicates are removed
- *   - sections missing from the saved order are appended in default order
+ *   - sections missing from the saved order are inserted after their default predecessor
  *   - an empty or invalid saved order falls back to the default entirely
  *
  * Used by both the public homepage and the admin reorder screen, so the two
@@ -76,8 +79,21 @@ export function resolveHomeSectionOrder(stored?: string[] | null): HomeSectionKe
       out.push(key);
     }
   }
-  for (const key of HOME_SECTION_ORDER) {
-    if (!seen.has(key)) out.push(key);
-  }
+  // A section the saved order doesn't know about (e.g. one added after the admin
+  // last saved) is slotted in right after the section that precedes it in the
+  // default order, rather than being dumped at the very bottom of the page.
+  HOME_SECTION_ORDER.forEach((key, i) => {
+    if (seen.has(key)) return;
+    let insertAt = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const at = out.indexOf(HOME_SECTION_ORDER[j]);
+      if (at !== -1) {
+        insertAt = at + 1;
+        break;
+      }
+    }
+    out.splice(insertAt, 0, key);
+    seen.add(key);
+  });
   return out;
 }

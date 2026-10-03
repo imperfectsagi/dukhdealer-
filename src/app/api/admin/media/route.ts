@@ -42,7 +42,10 @@ export async function POST(req: NextRequest) {
     }
 
     const bucket = await getBucket();
-    const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
+    // Extension is kept for readability only; strip anything that isn't a plain
+    // alphanumeric so odd file names can't produce an odd storage key or URL.
+    const rawExt = file.name.includes(".") ? (file.name.split(".").pop() || "") : "";
+    const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8);
     const key = `media/${crypto.randomUUID()}${ext ? `.${ext}` : ""}`;
 
     await bucket.put(key, await file.arrayBuffer(), {
@@ -51,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     const item = await createMediaItem({
       name: file.name,
-      url: `/api/media/${encodeURIComponent(key)}`,
+      url: `/api/media/${key}`,
       r2Key: key,
       type: file.type.startsWith("video") ? "video" : "image",
       size: file.size,

@@ -39,6 +39,22 @@ export async function PUT(req: NextRequest) {
       paymentQR?: Partial<PaymentQR>;
     };
 
+    if (body.site?.timezone !== undefined) {
+      const tz = String(body.site.timezone).trim();
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: tz });
+      } catch {
+        return NextResponse.json(
+          { error: `"${tz}" is not a valid timezone. Use an IANA name such as Asia/Kolkata.` },
+          { status: 400 }
+        );
+      }
+      body.site.timezone = tz;
+    }
+    if (body.site?.websiteName !== undefined && !String(body.site.websiteName).trim()) {
+      return NextResponse.json({ error: "Website name can't be empty." }, { status: 400 });
+    }
+
     const previousLogo = body.logo ? await getLogoSettings().catch(() => null) : null;
 
     // Sequential, not Promise.all: these are separate singleton rows and D1

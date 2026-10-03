@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { absoluteUrl } from "@/lib/seo";
 import { getSiteSettings } from "@/lib/d1";
 
 const EXPLORE = [
   { href: "/about", label: "About" },
   { href: "/services", label: "Sessions" },
+  { href: "/listeners", label: "Listeners" },
   { href: "/packages", label: "Packages" },
   { href: "/blog", label: "Blog" },
   { href: "/track", label: "Track Booking" },
@@ -40,7 +42,9 @@ export default async function Footer() {
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           <div>
-            <h3 className="mb-3 text-lg font-semibold text-[var(--color-accent)]">{websiteName}</h3>
+            <h3 className="mb-3 text-lg font-semibold text-[var(--color-accent)]">
+              <a href={absoluteUrl("/")}>{websiteName}</a>
+            </h3>
             <p className="text-sm leading-relaxed text-white/70">{tagline}</p>
           </div>
           <div>

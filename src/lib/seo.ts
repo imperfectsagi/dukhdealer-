@@ -40,3 +40,36 @@ export function clip(text: string | undefined, max = 160): string | undefined {
   const lastSpace = cut.lastIndexOf(" ");
   return `${(lastSpace > 60 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
+
+// ---------------------------------------------------------------------------
+// Homepage defaults. Used when Admin > SEO has a blank value, so the public
+// homepage can never render without a title, description or H1.
+// ---------------------------------------------------------------------------
+export const DEFAULT_HOME_TITLE = "Dukh Dealer – Private Listening, Chat & Voice Sessions";
+export const DEFAULT_HOME_DESCRIPTION =
+  "Dukh Dealer is a private listening service where you can talk openly without judgment. Book one-to-one chat, private voice conversations, or mystery video sessions.";
+export const DEFAULT_HOME_H1 = "A Safe Space to Be Heard";
+
+/**
+ * Make sure a page title ends with the brand: "Post Title | Dukh Dealer".
+ * Leaves a title alone if it already carries the brand, so it is never doubled.
+ */
+export function withBrand(title: string, brand = SITE_NAME): string {
+  const t = title.replace(/\s+/g, " ").trim();
+  if (!t) return brand;
+  if (t.toLowerCase().endsWith(`| ${brand}`.toLowerCase())) return t;
+  return `${t} | ${brand}`;
+}
+
+/** The only accepted canonical for a page: an absolute URL on the main domain. */
+export function canonicalFor(path: string, override?: string): string {
+  if (override) {
+    try {
+      const u = new URL(override);
+      if (u.origin === new URL(SITE_URL).origin) return u.toString();
+    } catch {
+      // not a URL — ignore the override
+    }
+  }
+  return absoluteUrl(path);
+}

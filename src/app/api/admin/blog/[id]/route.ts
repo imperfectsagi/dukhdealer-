@@ -11,6 +11,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await requireAdmin();
     const { id } = await params;
     const body = (await req.json()) as Partial<BlogPost>;
+    // Keep slugs URL-safe if they are edited.
+    if (typeof body.slug === "string") {
+      body.slug = body.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      if (!body.slug) delete body.slug;
+    }
     const post = await updateBlogPost(id, body);
     if (!post) return NextResponse.json({ error: "Post not found" }, { status: 404 });
     return NextResponse.json(post);

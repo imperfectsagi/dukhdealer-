@@ -21,30 +21,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
     {
       url: `${baseUrl}/`,
-      lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 1,
     },
-    {
-      url: `${baseUrl}/about`,
-    },
-    {
-      url: `${baseUrl}/services`,
-    },
-    {
-      url: `${baseUrl}/packages`,
-    },
-    {
-      url: `${baseUrl}/blog`,
-    },
+    { url: `${baseUrl}/about`, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${baseUrl}/services`, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${baseUrl}/listeners`, changeFrequency: "weekly", priority: 0.6 },
+    { url: `${baseUrl}/packages`, changeFrequency: "weekly", priority: 0.7 },
+    { url: `${baseUrl}/blog`, changeFrequency: "weekly", priority: 0.6 },
   ];
 
   const packagePages: MetadataRoute.Sitemap = packages.map((pkg) => ({
     url: `${baseUrl}/packages/${pkg.id}`,
+    lastModified: pkg.updatedAt ? new Date(pkg.updatedAt) : undefined,
+    priority: 0.5,
   }));
 
   const blogPages: MetadataRoute.Sitemap = posts.map((post) => ({
     url: `${baseUrl}/blog/${post.slug}`,
+    lastModified: post.updatedAt ? new Date(post.updatedAt) : undefined,
+    priority: 0.6,
   }));
 
   return [...staticPages, ...packagePages, ...blogPages];

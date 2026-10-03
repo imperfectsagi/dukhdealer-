@@ -7,16 +7,29 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await (req.json() as Promise<{ email?: string; password?: string }>);
-    if (!body.email || !body.password) {
-      return NextResponse.json({ error: "email and password are required" }, { status: 400 });
+    // `identifier` is a username or an email. `email` is still accepted so any
+    // older client keeps working.
+    const body = await (req.json() as Promise<{ identifier?: string; email?: string; password?: string }>);
+    const identifier = (body.identifier ?? body.email ?? "").toLowerCase().trim();
+    if (!identifier || !body.password) {
+      return NextResponse.json({ error: "username and password are required" }, { status: 400 });
     }
 
     const db = await getDB();
-    const user = await db
-      .prepare("SELECT id, password_hash FROM admin_users WHERE email = ?")
-      .bind(body.email.toLowerCase().trim())
-      .first<{ id: string; password_hash: string }>();
+    type UserRow = { id: string; password_hash: string };
+    let user: UserRow | null;
+    try {
+      user = await db
+        .prepare("SELECT id, password_hash FROM admin_users WHERE lower(username) = ? OR email = ?")
+        .bind(identifier, identifier)
+        .first<UserRow>();
+    } catch {
+      // Migration 0008 (username column) not applied yet — email login still works.
+      user = await db
+        .prepare("SELECT id, password_hash FROM admin_users WHERE email = ?")
+        .bind(identifier)
+        .first<UserRow>();
+    }
 
     // Always run verifyPassword (even against a dummy hash) to avoid leaking
     // account existence via response-time differences.
@@ -25,7 +38,7 @@ export async function POST(req: NextRequest) {
       : await verifyPassword(body.password, "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
     if (!user || !valid) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+      return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
     }
 
     const token = generateSessionToken();

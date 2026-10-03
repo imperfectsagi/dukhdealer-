@@ -16,6 +16,9 @@ const emptyForm: Omit<BlogPost, "id" | "createdAt" | "updatedAt"> = {
   tags: [],
   status: "draft",
   publishDate: undefined,
+  seoTitle: "",
+  seoDescription: "",
+  canonicalUrl: "",
 };
 
 export default function AdminBlogPage() {
@@ -160,6 +163,30 @@ export default function AdminBlogPage() {
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}
           />
+          <div className="space-y-3 rounded-lg border border-[var(--admin-border)] p-3">
+            <p className="text-xs font-medium text-[var(--admin-text-muted)]">
+              Search engine (SEO) — optional. Blank = the post title + &quot; | Dukh Dealer&quot; and the excerpt.
+            </p>
+            <input
+              className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-sm"
+              placeholder="SEO title (a unique title for this post)"
+              value={form.seoTitle || ""}
+              onChange={(e) => setForm({ ...form, seoTitle: e.target.value })}
+            />
+            <textarea
+              className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-sm"
+              rows={2}
+              placeholder="SEO description (around 150 characters)"
+              value={form.seoDescription || ""}
+              onChange={(e) => setForm({ ...form, seoDescription: e.target.value })}
+            />
+            <input
+              className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 font-mono text-sm"
+              placeholder="Canonical URL — leave blank (defaults to https://dukhdealer.online/blog/your-slug)"
+              value={form.canonicalUrl || ""}
+              onChange={(e) => setForm({ ...form, canonicalUrl: e.target.value })}
+            />
+          </div>
           <select
             className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-sm"
             value={form.status}

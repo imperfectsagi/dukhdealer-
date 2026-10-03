@@ -6,6 +6,8 @@ import { ADMIN_SESSION_COOKIE } from "@/lib/auth";
 export interface AdminSession {
   adminId: string;
   email: string;
+  /** The session token itself (the cookie value). */
+  sessionId: string;
 }
 
 /** Reads the session cookie, validates it against D1, and returns the admin — or null. */
@@ -30,7 +32,7 @@ export async function getAdminSession(): Promise<AdminSession | null> {
     db.prepare("DELETE FROM admin_sessions WHERE id = ?").bind(token).run().catch(() => {});
     return null;
   }
-  return { adminId: row.admin_id, email: row.email };
+  return { adminId: row.admin_id, email: row.email, sessionId: token };
 }
 
 /** Throws a Response-friendly error object; use in API routes to short-circuit unauthenticated requests. */

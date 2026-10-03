@@ -47,6 +47,7 @@ export default function Logo({
       src={src}
       alt={alt || websiteName}
       className={cn("h-9 w-auto max-w-[180px] object-contain sm:h-10", className)}
+      draggable={false}
       onError={() => setFailed(true)}
     />
   );

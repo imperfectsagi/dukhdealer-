@@ -1,23 +1,21 @@
 import { getAboutPage, getAboutSections, getSEOSettings } from "@/lib/d1";
-import { absoluteUrl } from "@/lib/seo";
+import { pageMetadata } from "@/lib/page-seo";
+import BrandLink from "@/components/public/BrandLink";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
+  let title = "About Us | Dukh Dealer";
+  let description = "Learn what Dukh Dealer is, how private listening sessions work, and what the service is not.";
   try {
     const seo = await getSEOSettings();
-    return {
-      title: seo.about.title,
-      description: seo.about.description,
-      alternates: { canonical: absoluteUrl("/about") },
-    };
+    title = seo.about.title?.trim() || title;
+    description = seo.about.description?.trim() || description;
   } catch {
-    return {
-      title: "About | Dukh Dealer",
-      description: "Learn what Dukh Dealer is — and what it is not.",
-      alternates: { canonical: absoluteUrl("/about") },
-    };
+    // D1 unreachable — defaults.
   }
+  return pageMetadata({ title, description, path: "/about" });
 }
 
 /**
@@ -66,6 +64,12 @@ export default async function AboutPage() {
           ))}
         </div>
       )}
+
+      <p className="mt-14 border-t border-[var(--color-border)] pt-6 text-sm leading-relaxed text-[var(--color-muted)]">
+        Want to see how it works in practice? Start at the <BrandLink>Dukh Dealer</BrandLink> homepage,
+        browse the <Link href="/services" className="underline underline-offset-2">session types</Link>, or{" "}
+        <Link href="/listeners" className="underline underline-offset-2">meet the listeners</Link>.
+      </p>
     </div>
   );
 }

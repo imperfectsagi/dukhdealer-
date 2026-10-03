@@ -23,11 +23,11 @@ export async function POST(req: NextRequest) {
     const listener = await createListener({
       nickname: body.nickname.trim(),
       languages: body.languages || [],
-      style: body.style || "",
+      style: (body.style || "").trim(),
       modes: body.modes || [],
-      avatar: body.avatar,
-      active: body.active ?? false,
-      bio: body.bio,
+      avatar: body.avatar?.trim() || undefined,
+      active: body.active ?? true,
+      bio: body.bio?.trim() || undefined,
     });
     await logAudit({
       adminId: session.adminId,

@@ -7,6 +7,7 @@ import {
   getBanners,
   getCTABlocks,
   getFAQs,
+  getListeners,
   getPackageReviewSummaries,
   getPackages,
   getReviews,
@@ -18,35 +19,41 @@ import { formatCurrency } from "@/lib/utils";
 import { SERVICE_TYPE_LABELS as LABELS } from "@/types";
 import { resolveHomeSectionOrder, type HomeSectionKey } from "@/config/home-sections";
 import PackageRating from "@/components/public/PackageRating";
-import { SITE_NAME, SITE_URL, absoluteUrl } from "@/lib/seo";
+import ListenerCard from "@/components/public/ListenerCard";
+import { pageMetadata } from "@/lib/page-seo";
+import {
+  DEFAULT_HOME_DESCRIPTION,
+  DEFAULT_HOME_H1,
+  DEFAULT_HOME_TITLE,
+  SITE_NAME,
+  SITE_URL,
+  absoluteUrl,
+} from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Homepage <title>, description and canonical.
+ * Homepage <title>, description, canonical, Open Graph and Twitter tags.
  *
- * Previously this page had no metadata of its own, so the tab/search title came
- * from the layout's *global* title and the Homepage fields in Admin > SEO were
- * only ever used for Open Graph. They now drive the real <title> and meta
- * description, with the global values as the fallback when they are blank.
+ * Values come from Admin > SEO > Homepage; if either is blank the built-in
+ * brand defaults apply, so the homepage always renders a title and description.
+ * The canonical is always https://dukhdealer.online/ .
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const alternates = { canonical: absoluteUrl("/") };
+  let title = DEFAULT_HOME_TITLE;
+  let description = DEFAULT_HOME_DESCRIPTION;
   try {
     const seo = await getSEOSettings();
-    return {
-      title: seo.homepage.title || seo.globalTitle,
-      description: seo.homepage.description || seo.globalDescription,
-      alternates,
-    };
+    title = seo.homepage.title?.trim() || title;
+    description = seo.homepage.description?.trim() || description;
   } catch {
-    // D1 unreachable — keep the layout's static title/description.
-    return { alternates };
+    // D1 unreachable — brand defaults.
   }
+  return pageMetadata({ title, description, path: "/", omitCanonical: true });
 }
 
 export default async function HomePage() {
-  const [pkgs, revs, faqList, banners, ctaBlocks, site, theme, reviewSummaries] = await Promise.all([
+  const [pkgs, revs, faqList, banners, ctaBlocks, site, theme, reviewSummaries, listeners] = await Promise.all([
     getPackages(true),
     getReviews(true),
     getFAQs(true),
@@ -55,6 +62,8 @@ export default async function HomePage() {
     getSiteSettings(),
     getThemeSettings(),
     getPackageReviewSummaries(),
+    // A listener list that fails to load must never take the homepage down.
+    getListeners(true).catch(() => []),
   ]);
 
   // Highest-priority published banner drives the hero.
@@ -141,7 +150,7 @@ export default async function HomePage() {
       <BannerHero
         banner={banner}
         eyebrow={`${site.websiteName || SITE_NAME} · Private conversations`}
-        fallbackHeading={site.tagline || "A private space to be heard"}
+        fallbackHeading={DEFAULT_HOME_H1}
         fallbackDescription={
           site.description || "Chat. Voice. Mystery Video. Real listening — no labels, no diagnosis."
         }
@@ -224,6 +233,29 @@ export default async function HomePage() {
         </div>
       </section>
     ),
+
+    /* Listeners — straight from Admin > Listeners (approved ones only) */
+    listeners:
+      listeners.length > 0 ? (
+        <section className="py-16 sm:py-20 border-b border-[var(--color-border)]">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <h2 className="text-2xl sm:text-3xl font-semibold text-center mb-4">Meet the listeners</h2>
+            <p className="text-center text-[var(--color-muted)] mb-12 max-w-lg mx-auto">
+              Real people who listen without judging, fixing or labelling.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {listeners.slice(0, 6).map((l) => (
+                <ListenerCard key={l.id} listener={l} />
+              ))}
+            </div>
+            <div className="text-center mt-8">
+              <Link href="/listeners">
+                <Button variant="outline">All listeners</Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null,
 
     /* Packages preview — rating comes from that package's own reviews only */
     packages: (
@@ -397,6 +429,10 @@ export default async function HomePage() {
 
   return (
     <>
+      {/* Rendered here rather than through Next metadata, which would drop the
+          trailing slash. React hoists both into <head>. */}
+      <link rel="canonical" href={absoluteUrl("/")} />
+      <meta property="og:url" content={absoluteUrl("/")} />
       <script
         type="application/ld+json"
         // "<" is escaped so no stored text can ever close the script tag early.

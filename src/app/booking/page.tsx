@@ -12,7 +12,8 @@ import type {
   Listener,
   Package,
 } from "@/types";
-import { SERVICE_TYPE_LABELS } from "@/types";
+import { LANGUAGE_LABELS, SERVICE_TYPE_LABELS } from "@/types";
+import ListenerAvatar from "@/components/public/ListenerAvatar";
 
 const PREFERENCES: { value: ConversationPreference; label: string; desc: string }[] = [
   { value: "just_listen", label: "Just Listen", desc: "I mostly need someone to hear me." },
@@ -437,9 +438,17 @@ export default function BookingPage() {
                 onClick={() => setFlow((f) => ({ ...f, listenerId: l.id, date: undefined, time: undefined }))}
                 className={cardClass(flow.listenerId === l.id)}
               >
-                <p className="font-medium">{l.nickname}</p>
-                <p className="mt-1 text-sm text-[var(--color-muted)]">{l.style}</p>
-                <p className="mt-2 text-xs text-[var(--color-muted)]">{l.languages.join(" · ")}</p>
+                <span className="flex items-center gap-4">
+                  <ListenerAvatar src={l.avatar} name={l.nickname} className="h-14 w-14" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">{l.nickname}</span>
+                    <span className="mt-1 block text-sm text-[var(--color-muted)]">{l.style}</span>
+                    {l.bio && <span className="mt-1 block text-xs text-[var(--color-muted)]">{l.bio}</span>}
+                    <span className="mt-2 block text-xs text-[var(--color-muted)]">
+                      {l.languages.map((x) => LANGUAGE_LABELS[x] || x).join(" · ")}
+                    </span>
+                  </span>
+                </span>
               </button>
             ))}
           <div className="mt-4 flex gap-3">

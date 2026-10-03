@@ -1,12 +1,23 @@
 import Link from "next/link";
 import Button from "@/components/ui/Button";
-import { absoluteUrl } from "@/lib/seo";
+import { getSEOSettings } from "@/lib/d1";
+import { pageMetadata } from "@/lib/page-seo";
+import BrandLink from "@/components/public/BrandLink";
 
-export const metadata = {
-  title: "Sessions | Dukh Dealer",
-  description: "Private Chat, Private Voice, and Mystery Video.",
-  alternates: { canonical: absoluteUrl("/services") },
-};
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata() {
+  let title = "Sessions | Dukh Dealer";
+  let description = "Private Chat, Private Voice, and Mystery Video sessions with a real listener.";
+  try {
+    const seo = await getSEOSettings();
+    title = seo.services.title?.trim() || title;
+    description = seo.services.description?.trim() || description;
+  } catch {
+    // D1 unreachable — defaults.
+  }
+  return pageMetadata({ title, description, path: "/services" });
+}
 
 const services = [
   {
@@ -28,7 +39,7 @@ export default function ServicesPage() {
     <div className="mx-auto max-w-4xl px-4 py-16 animate-fade-in">
       <h1 className="text-3xl sm:text-4xl font-semibold text-center mb-4">Sessions</h1>
       <p className="text-center text-[var(--color-muted)] mb-12">
-        Three ways to have a private conversation.
+        Three ways to have a private conversation with <BrandLink>Dukh Dealer</BrandLink>.
       </p>
       <div className="space-y-6">
         {services.map((s) => (

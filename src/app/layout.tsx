@@ -4,7 +4,13 @@ import "./globals.css";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { getLogoSettings, getSEOSettings, getThemeSettings, withCacheBust } from "@/lib/d1";
-import { SITE_NAME, SITE_URL, isDuplicateHost } from "@/lib/seo";
+import {
+  DEFAULT_HOME_DESCRIPTION,
+  DEFAULT_HOME_TITLE,
+  SITE_NAME,
+  SITE_URL,
+  isDuplicateHost,
+} from "@/lib/seo";
 
 /**
  * Always rendered per-request. The header logo, favicon, theme colours and SEO
@@ -14,14 +20,16 @@ import { SITE_NAME, SITE_URL, isDuplicateHost } from "@/lib/seo";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
+  // Fallback for pages that set no metadata of their own (and for the moment
+  // D1 is unreachable). Pages with real content set their own title,
+  // description, canonical and Open Graph through pageMetadata().
   let seoMeta: Metadata = {
     metadataBase: new URL(SITE_URL),
-    title: "Dukh Dealer — A private space to be heard",
-    description:
-      "Private paid conversation service. Chat, voice, or mystery video with a real listener. Not therapy.",
+    title: DEFAULT_HOME_TITLE,
+    description: DEFAULT_HOME_DESCRIPTION,
     openGraph: {
-      title: "Dukh Dealer — A private space to be heard",
-      description: "Private paid conversations. Be heard without labels.",
+      title: DEFAULT_HOME_TITLE,
+      description: DEFAULT_HOME_DESCRIPTION,
       type: "website",
       siteName: SITE_NAME,
     },
@@ -29,16 +37,18 @@ export async function generateMetadata(): Promise<Metadata> {
 
   try {
     const seo = await getSEOSettings();
+    const title = seo.globalTitle || DEFAULT_HOME_TITLE;
+    const description = seo.globalDescription || DEFAULT_HOME_DESCRIPTION;
     seoMeta = {
-      title: seo.globalTitle,
-      description: seo.globalDescription,
-      // Always the real production domain. This used to come from the
-      // seo_settings.canonical_base row, which was seeded as the wrong domain
-      // (dukhdealer.com), so every relative metadata URL resolved against it.
+      title,
+      description,
+      // Always the real production domain (see src/lib/seo.ts).
       metadataBase: new URL(SITE_URL),
+      // Open Graph here describes the GLOBAL fallback title/description, not the
+      // homepage's — the homepage and every other page set their own.
       openGraph: {
-        title: seo.homepage.title,
-        description: seo.homepage.description,
+        title,
+        description,
         type: "website",
         siteName: SITE_NAME,
         images: seo.ogImage ? [seo.ogImage] : undefined,

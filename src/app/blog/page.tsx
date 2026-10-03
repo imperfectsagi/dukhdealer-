@@ -1,20 +1,31 @@
 import Link from "next/link";
-import { getBlogPosts } from "@/lib/d1";
-import { absoluteUrl } from "@/lib/seo";
+import { getBlogPosts, getSEOSettings } from "@/lib/d1";
+import { pageMetadata } from "@/lib/page-seo";
+import BrandLink from "@/components/public/BrandLink";
 
 export const dynamic = "force-dynamic";
-export const metadata = {
-  title: "Blog | Dukh Dealer",
-  description: "Reflections on listening and private conversation.",
-  alternates: { canonical: absoluteUrl("/blog") },
-};
+export async function generateMetadata() {
+  let title = "Blog | Dukh Dealer";
+  let description = "Reflections on listening and private conversation.";
+  try {
+    const seo = await getSEOSettings();
+    title = seo.blog.title?.trim() || title;
+    description = seo.blog.description?.trim() || description;
+  } catch {
+    // D1 unreachable — defaults.
+  }
+  return pageMetadata({ title, description, path: "/blog" });
+}
 
 export default async function BlogPage() {
   const posts = await getBlogPosts(true);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 animate-fade-in">
-      <h1 className="text-3xl font-semibold mb-8">Blog</h1>
+      <h1 className="text-3xl font-semibold mb-3">Blog</h1>
+      <p className="mb-8 text-sm text-[var(--color-muted)]">
+        Reflections on listening and private conversation from <BrandLink>Dukh Dealer</BrandLink>.
+      </p>
       <div className="space-y-6">
         {posts.map((p) => (
           <Link

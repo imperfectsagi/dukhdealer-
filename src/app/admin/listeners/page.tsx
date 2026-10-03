@@ -27,7 +27,9 @@ const EMPTY: Draft = {
   style: "",
   modes: [],
   avatar: undefined,
-  active: false,
+  // New listeners start approved: the admin who just filled the form expects
+  // them to appear on the site. The toggle below turns that off.
+  active: true,
   bio: "",
 };
 
@@ -72,17 +74,28 @@ export default function AdminListenersPage() {
     }
     setSaving(true);
     setError("");
+    // "" (not undefined) for a removed photo: JSON.stringify drops undefined
+    // keys, which meant removing an avatar was silently ignored on edit.
+    const payload = {
+      nickname: draft.nickname.trim(),
+      style: draft.style,
+      bio: draft.bio || "",
+      languages: draft.languages,
+      modes: draft.modes,
+      avatar: draft.avatar || "",
+      active: draft.active,
+    };
     try {
       const res = draft.id
         ? await fetch(`/api/admin/listeners/${draft.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(draft),
+            body: JSON.stringify(payload),
           })
         : await fetch("/api/admin/listeners", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(draft),
+            body: JSON.stringify(payload),
           });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
@@ -98,11 +111,17 @@ export default function AdminListenersPage() {
   };
 
   const toggleActive = async (l: Listener) => {
-    await fetch(`/api/admin/listeners/${l.id}`, {
+    setError("");
+    const res = await fetch(`/api/admin/listeners/${l.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !l.active }),
     });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      setError(body.error || "The listener could not be updated.");
+      return;
+    }
     showFlash(l.active ? "Listener deactivated" : "Listener approved");
     await load();
   };
@@ -111,11 +130,16 @@ export default function AdminListenersPage() {
     if (!deleteTarget) return;
     setDeleteBusy(true);
     try {
+      setError("");
       const res = await fetch(`/api/admin/listeners/${deleteTarget.id}`, { method: "DELETE" });
       if (res.ok) {
         setDeleteTarget(null);
         showFlash("Listener deleted");
         await load();
+      } else {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setDeleteTarget(null);
+        setError(body.error || "The listener could not be deleted.");
       }
     } finally {
       setDeleteBusy(false);
@@ -132,7 +156,7 @@ export default function AdminListenersPage() {
     <div className="animate-fade-in max-w-3xl space-y-5">
       <AdminPageHeader
         title="Listeners"
-        description="Only approved listeners appear in the booking flow."
+        description="Approved listeners appear on the public site (homepage and Listeners page) and in the booking flow."
         actions={
           <AdminButton size="sm" onClick={() => setDraft({ ...EMPTY })}>
             New listener
@@ -233,7 +257,23 @@ export default function AdminListenersPage() {
           {listeners.map((l) => (
             <RecordCard
               key={l.id}
-              title={l.nickname}
+              title={
+                <span className="flex items-center gap-3">
+                  {l.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={l.avatar}
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded-full border border-[var(--admin-border)] object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-surface-2)] text-sm text-[var(--admin-text-muted)]">
+                      {l.nickname.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  {l.nickname}
+                </span>
+              }
               subtitle={l.style}
               badges={
                 <span
@@ -275,7 +315,7 @@ export default function AdminListenersPage() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="Delete this listener?"
-        description={`${deleteTarget?.nickname || ""} — their availability windows are removed too. Existing bookings keep the listener's name.`}
+        description={`${deleteTarget?.nickname || ""} — they disappear from the public website and booking flow, and their availability windows are removed. Existing bookings keep the listener's name.`}
         confirmLabel="Delete"
         destructive
         busy={deleteBusy}

@@ -3,16 +3,20 @@ import Button from "@/components/ui/Button";
 import PackageRating from "@/components/public/PackageRating";
 import { getPackageReviewSummaries, getPackages } from "@/lib/d1";
 import { formatCurrency } from "@/lib/utils";
-import { absoluteUrl } from "@/lib/seo";
+import { pageMetadata } from "@/lib/page-seo";
+import BrandLink from "@/components/public/BrandLink";
 import { SERVICE_TYPE_LABELS } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Packages | Dukh Dealer",
-  description: "Choose a private conversation package.",
-  alternates: { canonical: absoluteUrl("/packages") },
-};
+export async function generateMetadata() {
+  return pageMetadata({
+    title: "Packages | Dukh Dealer",
+    description:
+      "Choose a private chat, voice or mystery video conversation package and book a time with a listener.",
+    path: "/packages",
+  });
+}
 
 export default async function PackagesPage() {
   // Ratings are keyed by package ID, so each card shows only its own reviews.
@@ -22,7 +26,7 @@ export default async function PackagesPage() {
     <div className="mx-auto max-w-6xl px-4 py-16 animate-fade-in">
       <h1 className="text-3xl sm:text-4xl font-semibold text-center mb-4">Packages</h1>
       <p className="text-center text-[var(--color-muted)] mb-12 max-w-lg mx-auto">
-        Select a duration and conversation type. All sessions are private.
+        Select a duration and conversation type. All <BrandLink>Dukh Dealer</BrandLink> sessions are private.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {pkgs.map((pkg) => (

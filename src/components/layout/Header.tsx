@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Logo from "@/components/ui/Logo";
 import HeaderNav, { type HeaderNavItem } from "@/components/layout/HeaderNav";
+import { absoluteUrl } from "@/lib/seo";
 import { getLogoSettings, getSiteSettings, getThemeSettings, withCacheBust } from "@/lib/d1";
 
 const FALLBACK_NAV: HeaderNavItem[] = [
@@ -55,7 +56,14 @@ export default async function Header() {
     <header className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-background)]/95 backdrop-blur-md">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="relative flex h-16 items-center justify-between gap-3">
-          <Link href="/" className="flex min-w-0 items-center gap-2" aria-label={websiteName}>
+          {/* The whole logo (image or wordmark fallback) is one link to the
+              homepage on the canonical domain. */}
+          <Link
+            href={absoluteUrl("/")}
+            className="relative z-10 flex min-w-0 shrink-0 cursor-pointer items-center gap-2"
+            aria-label={`${websiteName} – home`}
+            title={websiteName}
+          >
             <Logo src={logoSrc} alt={logoAlt} websiteName={websiteName} />
           </Link>
           <HeaderNav items={nav} bookLabel={bookLabel} homepageNavColor={homepageNavColor} />

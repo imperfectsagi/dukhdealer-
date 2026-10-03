@@ -10,6 +10,7 @@ import {
   HelpCircle,
   Image as ImageIcon,
   Info,
+  KeyRound,
   LayoutDashboard,
   MousePointerClick,
   ListOrdered,
@@ -72,6 +73,7 @@ export const NAV_GROUPS: { title: string; links: NavLink[] }[] = [
       { href: "/admin/favicon", label: "Favicon", icon: ImageIcon },
       { href: "/admin/seo", label: "SEO", icon: Search },
       { href: "/admin/settings", label: "Settings", icon: Settings },
+      { href: "/admin/account", label: "Account", icon: KeyRound },
     ],
   },
 ];

@@ -434,7 +434,25 @@ export async function getSEOSettings(): Promise<SEOSettings> {
 export async function updateSEOSettings(data: Partial<SEOSettings>): Promise<SEOSettings> {
   const db = await getDB();
   const current = await getSEOSettings();
-  const merged = { ...current, ...data };
+  // Merge each page's { title, description } pair field by field, so saving only
+  // a title can never blank that page's description.
+  const text = (v: unknown, fallback: string) => (typeof v === "string" ? v.trim() : fallback);
+  const page = (key: "homepage" | "about" | "services" | "faq" | "blog") => ({
+    title: text(data[key]?.title, current[key].title),
+    description: text(data[key]?.description, current[key].description),
+  });
+  const merged: SEOSettings = {
+    globalTitle: text(data.globalTitle, current.globalTitle),
+    globalDescription: text(data.globalDescription, current.globalDescription),
+    ogImage: "ogImage" in data ? data.ogImage?.trim() || undefined : current.ogImage,
+    homepage: page("homepage"),
+    about: page("about"),
+    services: page("services"),
+    faq: page("faq"),
+    blog: page("blog"),
+    // Not editable: canonicals always use the production domain (src/lib/seo.ts).
+    canonicalBase: current.canonicalBase,
+  };
   await db
     .prepare(
       `UPDATE seo_settings SET global_title=?, global_description=?, og_image=?, homepage_title=?, homepage_description=?, about_title=?, about_description=?, services_title=?, services_description=?, faq_title=?, faq_description=?, blog_title=?, blog_description=?, canonical_base=? WHERE id='default'`
@@ -618,14 +636,21 @@ export async function deletePackage(id: string): Promise<boolean> {
 
 export async function getListeners(activeOnly = true): Promise<Listener[]> {
   const db = await getDB();
-  const q = activeOnly ? "SELECT * FROM listeners WHERE active = 1" : "SELECT * FROM listeners";
+  // Soft-deleted listeners (deleted_at set) are gone everywhere: admin list,
+  // public site, booking flow.
+  const q = activeOnly
+    ? "SELECT * FROM listeners WHERE deleted_at IS NULL AND active = 1 ORDER BY nickname COLLATE NOCASE ASC"
+    : "SELECT * FROM listeners WHERE deleted_at IS NULL ORDER BY nickname COLLATE NOCASE ASC";
   const { results } = await db.prepare(q).all<Row>();
   return (results || []).map(rowToListener);
 }
 
 export async function getListenerById(id: string): Promise<Listener | undefined> {
   const db = await getDB();
-  const r = await db.prepare("SELECT * FROM listeners WHERE id = ?").bind(id).first<Row>();
+  const r = await db
+    .prepare("SELECT * FROM listeners WHERE id = ? AND deleted_at IS NULL")
+    .bind(id)
+    .first<Row>();
   return r ? rowToListener(r) : undefined;
 }
 
@@ -654,6 +679,11 @@ export async function updateListener(id: string, data: Partial<Listener>): Promi
   const existing = await getListenerById(id);
   if (!existing) return null;
   const merged = { ...existing, ...data };
+  // An empty string means "cleared" (the admin removed the photo or bio).
+  if (data.avatar !== undefined) merged.avatar = data.avatar.trim() || undefined;
+  if (data.bio !== undefined) merged.bio = data.bio.trim() || undefined;
+  if (typeof merged.nickname === "string") merged.nickname = merged.nickname.trim();
+  if (!merged.nickname) throw new Error("A nickname is required.");
   const db = await getDB();
   await db
     .prepare(
@@ -673,8 +703,36 @@ export async function updateListener(id: string, data: Partial<Listener>): Promi
   return merged;
 }
 
+/**
+ * Removes a listener from the admin list, the public site and the booking flow.
+ *
+ * bookings.listener_id is a foreign key to listeners(id) with no ON DELETE
+ * action, and D1 enforces foreign keys, so a hard DELETE of anyone who has ever
+ * been booked fails ("FOREIGN KEY constraint failed"). Such a listener is
+ * soft-deleted instead: hidden everywhere, availability cleared, old bookings
+ * untouched. A listener with no bookings is deleted for real.
+ */
 export async function deleteListener(id: string): Promise<boolean> {
   const db = await getDB();
+  const exists = await db
+    .prepare("SELECT id FROM listeners WHERE id = ? AND deleted_at IS NULL")
+    .bind(id)
+    .first();
+  if (!exists) return false;
+
+  const used = await db
+    .prepare("SELECT COUNT(*) AS n FROM bookings WHERE listener_id = ?")
+    .bind(id)
+    .first<{ n: number }>();
+
+  if ((used?.n ?? 0) > 0) {
+    await db.batch([
+      db.prepare("DELETE FROM availability_windows WHERE listener_id = ?").bind(id),
+      db.prepare("UPDATE listeners SET deleted_at = ?, active = 0 WHERE id = ?").bind(nowIso(), id),
+    ]);
+    return true;
+  }
+
   const res = await db.prepare("DELETE FROM listeners WHERE id = ?").bind(id).run();
   return (res.meta?.changes ?? 0) > 0;
 }

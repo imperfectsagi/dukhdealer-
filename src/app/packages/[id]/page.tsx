@@ -7,7 +7,9 @@ import PackageReviewForm from "@/components/public/PackageReviewForm";
 import { getPackageById, getPackageReviewSummaries, getPackageReviews } from "@/lib/d1";
 import { formatCurrency } from "@/lib/utils";
 import { SERVICE_TYPE_LABELS } from "@/types";
-import { SITE_NAME, absoluteUrl, clip } from "@/lib/seo";
+import { SITE_NAME, clip, withBrand } from "@/lib/seo";
+import { pageMetadata } from "@/lib/page-seo";
+import BrandLink from "@/components/public/BrandLink";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +27,12 @@ export async function generateMetadata({
   try {
     const pkg = await getPackageById(id);
     if (!pkg || !pkg.active) return {}; // the page itself responds 404
-    return {
-      title: `${pkg.name} | ${SITE_NAME}`,
+    return pageMetadata({
+      title: withBrand(pkg.name),
       description:
         clip(pkg.description) || `${pkg.name} — a private conversation package from ${SITE_NAME}.`,
-      alternates: { canonical: absoluteUrl(`/packages/${pkg.id}`) },
-    };
+      path: `/packages/${pkg.id}`,
+    });
   } catch {
     return {};
   }
@@ -70,6 +72,9 @@ export default async function PackageDetailPage({
         <h1 className="mt-1 text-2xl font-semibold sm:text-3xl">{pkg.name}</h1>
         <PackageRating summary={summary} className="mt-3" />
         <p className="mt-3 text-sm text-[var(--color-muted)]">{pkg.description}</p>
+        <p className="mt-2 text-xs text-[var(--color-muted)]">
+          A private conversation package from <BrandLink>Dukh Dealer</BrandLink>.
+        </p>
         <p className="mt-4 text-sm text-[var(--color-muted)]">
           {SERVICE_TYPE_LABELS[pkg.serviceType]} · {pkg.duration} min
         </p>

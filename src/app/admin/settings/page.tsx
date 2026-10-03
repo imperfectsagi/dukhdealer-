@@ -4,132 +4,125 @@ import { useRequireAdmin } from "@/lib/use-require-admin";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AdminButton from "@/components/admin/AdminButton";
-import type { SiteSettings, SEOSettings, LogoSettings, PaymentQR } from "@/types";
+import { Notice } from "@/components/admin/AdminUI";
+import type { SiteSettings } from "@/types";
 
-type SettingsBundle = {
-  site: SiteSettings;
-  seo: SEOSettings;
-  logo: LogoSettings;
-  paymentQR: PaymentQR;
-};
+/** The fields this page edits. Only these are sent on save, so saving here can
+ *  never overwrite settings owned by other admin pages (home section order,
+ *  social links, Instagram toggle...). */
+type SiteForm = Pick<
+  SiteSettings,
+  "websiteName" | "tagline" | "description" | "email" | "instagramUrl" | "timezone" | "footerText" | "ctaLabels"
+>;
 
-const TABS = ["Site", "SEO"] as const;
-type Tab = (typeof TABS)[number];
+function pickSite(s: SiteSettings): SiteForm {
+  return {
+    websiteName: s.websiteName,
+    tagline: s.tagline,
+    description: s.description,
+    email: s.email,
+    instagramUrl: s.instagramUrl,
+    timezone: s.timezone,
+    footerText: s.footerText,
+    ctaLabels: s.ctaLabels || {},
+  };
+}
 
 export default function AdminSettingsPage() {
   const authChecked = useRequireAdmin();
-  const [data, setData] = useState<SettingsBundle | null>(null);
-  const [tab, setTab] = useState<Tab>("Site");
+  const [site, setSite] = useState<SiteForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/admin/settings")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setData(data as SettingsBundle | null));
+      .then((res) => (res.ok ? (res.json() as Promise<{ site: SiteSettings }>) : null))
+      .then((data) => {
+        if (data) setSite(pickSite(data.site));
+        else setError("Couldn't load settings.");
+      })
+      .catch(() => setError("Couldn't load settings."));
   }, []);
 
-  const save = async (partial: Partial<SettingsBundle>) => {
+  const save = async () => {
+    if (!site) return;
     setSaving(true);
+    setError("");
     try {
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(partial),
+        body: JSON.stringify({ site }),
       });
-      if (res.ok) {
-        setData((await res.json()) as SettingsBundle);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+      const body = (await res.json().catch(() => ({}))) as { error?: string; site?: SiteSettings };
+      if (!res.ok) {
+        setError(body.error || "Settings could not be saved.");
+        return;
       }
+      if (body.site) setSite(pickSite(body.site));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      setError("Network error — nothing was saved.");
     } finally {
       setSaving(false);
     }
   };
 
-  if (!data) return <p className="text-[var(--admin-text-muted)]">Loading…</p>;
-
-  const setCta = (key: "book" | "primary" | "secondary", value: string) =>
-    setData({
-      ...data,
-      site: { ...data.site, ctaLabels: { ...(data.site.ctaLabels || {}), [key]: value } },
-    });
-
-
   if (!authChecked) return null;
+  if (!site) {
+    return error ? <Notice tone="error">{error}</Notice> : <p className="text-[var(--admin-text-muted)]">Loading…</p>;
+  }
+
+  const set = <K extends keyof SiteForm>(key: K, value: SiteForm[K]) => setSite({ ...site, [key]: value });
+  const setCta = (key: "book" | "primary" | "secondary", value: string) =>
+    set("ctaLabels", { ...site.ctaLabels, [key]: value });
+
   return (
-    <div className="animate-fade-in space-y-6 max-w-2xl">
+    <div className="animate-fade-in max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Settings</h1>
         {saved && <span className="text-sm text-[var(--admin-activate-text)]">Saved</span>}
       </div>
 
-      <div className="flex gap-2 border-b border-[var(--admin-border)]">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-              tab === t
-                ? "border-[var(--admin-primary-bg)] text-[var(--admin-primary-bg)]"
-                : "border-transparent text-[var(--admin-text-muted)]"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
+      {error && <Notice tone="error">{error}</Notice>}
+
+      <div className="space-y-3">
+        <Field label="Website name" value={site.websiteName} onChange={(v) => set("websiteName", v)} />
+        <Field label="Tagline" value={site.tagline} onChange={(v) => set("tagline", v)} />
+        <Field label="Description (footer)" textarea value={site.description} onChange={(v) => set("description", v)} />
+        <Field label="Contact email" value={site.email} onChange={(v) => set("email", v)} />
+        <Field label="Instagram URL" value={site.instagramUrl} onChange={(v) => set("instagramUrl", v)} />
+        <Field
+          label="Booking timezone (IANA, e.g. Asia/Kolkata)"
+          value={site.timezone}
+          onChange={(v) => set("timezone", v)}
+        />
+        <p className="pt-2 text-xs text-[var(--admin-text-muted)]">Button labels</p>
+        <Field label="Header button (top right)" value={site.ctaLabels?.book || ""} onChange={(v) => setCta("book", v)} />
+        <Field label="Homepage hero — main button" value={site.ctaLabels?.primary || ""} onChange={(v) => setCta("primary", v)} />
+        <Field label="Homepage hero — second button" value={site.ctaLabels?.secondary || ""} onChange={(v) => setCta("secondary", v)} />
+        <p className="text-xs text-[var(--admin-text-muted)]">
+          The hero main button text is overridden by the published banner&apos;s own button text (Admin &gt; Banners). The final call-to-action block is edited in Admin &gt; Final CTA.
+        </p>
+        <Field label="Footer text" textarea value={site.footerText} onChange={(v) => set("footerText", v)} />
+        <AdminButton size="sm" loading={saving} onClick={save}>Save site settings</AdminButton>
       </div>
 
-      {tab === "Site" && (
-        <div className="space-y-3">
-          <Field label="Website name" value={data.site.websiteName} onChange={(v) => setData({ ...data, site: { ...data.site, websiteName: v } })} />
-          <Field label="Tagline" value={data.site.tagline} onChange={(v) => setData({ ...data, site: { ...data.site, tagline: v } })} />
-          <Field label="Description" textarea value={data.site.description} onChange={(v) => setData({ ...data, site: { ...data.site, description: v } })} />
-          <Field label="Contact email" value={data.site.email} onChange={(v) => setData({ ...data, site: { ...data.site, email: v } })} />
-          <Field label="Instagram URL" value={data.site.instagramUrl} onChange={(v) => setData({ ...data, site: { ...data.site, instagramUrl: v } })} />
-          <Field
-            label="Booking timezone (IANA, e.g. Asia/Kolkata)"
-            value={data.site.timezone}
-            onChange={(v) => setData({ ...data, site: { ...data.site, timezone: v } })}
-          />
-          <p className="pt-2 text-xs text-[var(--admin-text-muted)]">Button labels</p>
-          <Field label="Header button (top right)" value={data.site.ctaLabels?.book || ""} onChange={(v) => setCta("book", v)} />
-          <Field label="Homepage hero — main button" value={data.site.ctaLabels?.primary || ""} onChange={(v) => setCta("primary", v)} />
-          <Field label="Homepage hero — second button" value={data.site.ctaLabels?.secondary || ""} onChange={(v) => setCta("secondary", v)} />
-          <p className="text-xs text-[var(--admin-text-muted)]">
-            The hero main button text is overridden by the published banner&apos;s own button text (Admin &gt; Banners). The final call-to-action block is edited in Admin &gt; Final CTA.
-          </p>
-          <Field label="Footer text" textarea value={data.site.footerText} onChange={(v) => setData({ ...data, site: { ...data.site, footerText: v } })} />
-          <AdminButton size="sm" disabled={saving} onClick={() => save({ site: data.site })}>Save site settings</AdminButton>
-        </div>
-      )}
-
-      {tab === "SEO" && (
-        <div className="space-y-3">
-          <Field label="Global title" value={data.seo.globalTitle} onChange={(v) => setData({ ...data, seo: { ...data.seo, globalTitle: v } })} />
-          <Field label="Global description" textarea value={data.seo.globalDescription} onChange={(v) => setData({ ...data, seo: { ...data.seo, globalDescription: v } })} />
-          <Field label="OG image URL" value={data.seo.ogImage || ""} onChange={(v) => setData({ ...data, seo: { ...data.seo, ogImage: v } })} />
-          <Field label="Canonical base URL" value={data.seo.canonicalBase} onChange={(v) => setData({ ...data, seo: { ...data.seo, canonicalBase: v } })} />
-          <p className="text-xs text-[var(--admin-text-muted)] pt-2">Per-page titles/descriptions</p>
-          <Field label="Homepage title" value={data.seo.homepage.title} onChange={(v) => setData({ ...data, seo: { ...data.seo, homepage: { ...data.seo.homepage, title: v } } })} />
-          <Field label="Homepage description" value={data.seo.homepage.description} onChange={(v) => setData({ ...data, seo: { ...data.seo, homepage: { ...data.seo.homepage, description: v } } })} />
-          <AdminButton size="sm" disabled={saving} onClick={() => save({ seo: data.seo })}>Save SEO settings</AdminButton>
-        </div>
-      )}
-
-      {/* Logo, favicon, payment QR and Instagram have their own dedicated,
-          mobile-friendly pages — linked here rather than duplicated. */}
+      {/* Everything else has its own dedicated page — linked here rather than
+          duplicated, so there is one place to edit each thing. */}
       <div className="admin-card p-4">
         <p className="mb-3 text-sm text-[var(--admin-text-muted)]">Managed on their own pages:</p>
         <div className="flex flex-wrap gap-2">
+          <Link href="/admin/seo"><AdminButton size="sm" variant="secondary">SEO</AdminButton></Link>
+          <Link href="/admin/account"><AdminButton size="sm" variant="secondary">Username &amp; password</AdminButton></Link>
           <Link href="/admin/logo"><AdminButton size="sm" variant="secondary">Logo</AdminButton></Link>
           <Link href="/admin/favicon"><AdminButton size="sm" variant="secondary">Favicon</AdminButton></Link>
           <Link href="/admin/payment"><AdminButton size="sm" variant="secondary">Payment QR</AdminButton></Link>
           <Link href="/admin/instagram"><AdminButton size="sm" variant="secondary">Instagram</AdminButton></Link>
-          <Link href="/admin/seo"><AdminButton size="sm" variant="secondary">Full SEO editor</AdminButton></Link>
         </div>
       </div>
-
     </div>
   );
 }

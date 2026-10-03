@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const PRIVATE_PREFIX = "payments/";
 
 /**
- * Read-through for R2 media objects, e.g. /api/media/media%2Fabc123.png
+ * Read-through for R2 media objects, e.g. /api/media/media/abc123.png (or the older /api/media/media%2Fabc123.png)
  * (matches the `url` stored in media_library for uploaded files).
  *
  * Public CMS media (logos, banners, blog images) is cached immutably - safe
@@ -19,9 +19,21 @@ const PRIVATE_PREFIX = "payments/";
  * valid admin session and are returned with no-store, so a payment proof can
  * never be cached publicly or fetched by guessing a URL.
  */
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ key: string }> }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
+  // Catch-all on purpose. Upload URLs used to be /api/media/media%2F<uuid>.png;
+  // depending on the proxy in front, that %2F is kept as one segment or turned
+  // into a real "/", and a single-segment route 404s on the second form. A
+  // catch-all accepts both, and old stored URLs keep working.
   const { key } = await params;
-  const decodedKey = decodeURIComponent(key);
+  let decodedKey: string;
+  try {
+    decodedKey = key.map((part) => decodeURIComponent(part)).join("/");
+  } catch {
+    return NextResponse.json({ error: "Bad media path" }, { status: 400 });
+  }
+  if (decodedKey.includes("..")) {
+    return NextResponse.json({ error: "Bad media path" }, { status: 400 });
+  }
 
   const isPrivate = decodedKey.startsWith(PRIVATE_PREFIX);
   if (isPrivate) {

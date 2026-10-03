@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { getBlogPostBySlug } from "@/lib/d1";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { SITE_NAME, absoluteUrl, clip } from "@/lib/seo";
+import { clip, withBrand } from "@/lib/seo";
+import { pageMetadata } from "@/lib/page-seo";
+import BrandLink from "@/components/public/BrandLink";
 import { sanitizeBlogHtml } from "@/lib/sanitize-html";
 
 export const dynamic = "force-dynamic";
@@ -20,11 +22,17 @@ export async function generateMetadata({
   try {
     const post = await getBlogPostBySlug(slug);
     if (!post || post.status !== "published") return {}; // the page itself responds 404
-    return {
-      title: post.seoTitle || `${post.title} | ${SITE_NAME}`,
+    return pageMetadata({
+      // "[Post Title] | Dukh Dealer". A custom SEO title is honoured, but the
+      // brand suffix is always present and never doubled.
+      title: withBrand(post.seoTitle || post.title),
       description: clip(post.seoDescription || post.excerpt),
-      alternates: { canonical: post.canonicalUrl || absoluteUrl(`/blog/${post.slug}`) },
-    };
+      path: `/blog/${post.slug}`,
+      // Only a canonical on the main domain is accepted.
+      canonicalOverride: post.canonicalUrl,
+      type: "article",
+      image: post.featuredImage,
+    });
   } catch {
     return {};
   }
@@ -49,6 +57,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         className="blog-content"
         dangerouslySetInnerHTML={{ __html: sanitizeBlogHtml(post.content) }}
       />
+      <p className="mt-12 border-t border-[var(--color-border)] pt-6 text-sm leading-relaxed text-[var(--color-muted)]">
+        Written for readers of <BrandLink>Dukh Dealer</BrandLink>, a private listening service for
+        one-to-one chat, voice and mystery video conversations.{" "}
+        <Link href="/services" className="underline underline-offset-2">
+          See the session types
+        </Link>
+        .
+      </p>
     </article>
   );
 }

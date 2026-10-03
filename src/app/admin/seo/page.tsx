@@ -14,14 +14,15 @@ import {
 } from "@/components/admin/AdminUI";
 import type { SEOSettings } from "@/types";
 
-const PAGES = ["homepage", "about", "services", "faq", "blog"] as const;
+// FAQ is not a page of its own (the FAQ appears on the homepage), so it has no
+// search listing to describe and is not offered here.
+const PAGES = ["homepage", "about", "services", "blog"] as const;
 type PageKey = (typeof PAGES)[number];
 
 const PAGE_LABELS: Record<PageKey, string> = {
   homepage: "Homepage",
   about: "About",
   services: "Sessions",
-  faq: "FAQ",
   blog: "Blog",
 };
 
@@ -48,15 +49,27 @@ export default function AdminSeoPage() {
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seo }),
+        body: JSON.stringify({
+          seo: {
+            globalTitle: seo.globalTitle,
+            globalDescription: seo.globalDescription,
+            ogImage: seo.ogImage || "",
+            homepage: seo.homepage,
+            about: seo.about,
+            services: seo.services,
+            blog: seo.blog,
+          },
+        }),
       });
       if (!res.ok) {
-        setError("SEO settings could not be saved.");
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(body.error || "SEO settings could not be saved.");
         return;
       }
       const data = (await res.json()) as { seo: SEOSettings };
       setSeo(data.seo);
-      setFlash("Saved");
+      setError("");
+      setFlash("Saved — live on the public site now.");
       setTimeout(() => setFlash(""), 2500);
     } catch {
       setError("Network error — nothing was saved.");
@@ -70,7 +83,10 @@ export default function AdminSeoPage() {
 
   return (
     <div className="animate-fade-in max-w-2xl space-y-5">
-      <AdminPageHeader title="SEO" description="Titles and descriptions search engines use." />
+      <AdminPageHeader
+        title="SEO"
+        description="Titles and descriptions search engines use. Saved values appear on the public pages immediately."
+      />
 
       {flash && <Notice tone="success">{flash}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
@@ -88,12 +104,10 @@ export default function AdminSeoPage() {
             onChange={(v) => setSeo({ ...seo, globalDescription: v })}
             rows={2}
           />
-          <TextField
-            label="Canonical base URL"
-            value={seo.canonicalBase}
-            onChange={(v) => setSeo({ ...seo, canonicalBase: v })}
-            placeholder="https://dukhdealer.com"
-          />
+          <p className="text-xs text-[var(--admin-text-muted)]">
+            Used by pages that have no title or description of their own. Every page&apos;s canonical
+            URL is built automatically on https://dukhdealer.online/ .
+          </p>
           <MediaField
             label="Social share image"
             value={seo.ogImage}
@@ -104,7 +118,15 @@ export default function AdminSeoPage() {
       </AdminCard>
 
       {PAGES.map((key) => (
-        <AdminCard key={key} title={PAGE_LABELS[key]}>
+        <AdminCard
+          key={key}
+          title={PAGE_LABELS[key]}
+          description={
+            key === "homepage"
+              ? "The homepage targets the brand name. Its main headline (H1) is the heading of the top published banner in Admin > Banners."
+              : undefined
+          }
+        >
           <div className="space-y-4">
             <TextField
               label="Title"

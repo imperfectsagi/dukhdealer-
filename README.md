@@ -3,6 +3,32 @@
 Private paid conversation service — Next.js App Router site with a full CMS-style
 Admin Panel, deployed to Cloudflare Workers with D1 (database) and R2 (media storage).
 
+## Latest update — homepage SEO, admin account, listener fixes
+
+**Run this migration before deploying** (it adds the admin username and listener soft-delete columns and sets the new homepage SEO values):
+
+```bash
+npx wrangler d1 migrations apply dukh-dealer-db --remote   # --local for dev
+```
+
+`migrations/0008_seo_account_listeners.sql`:
+
+- `admin_users.username` (starts as the part of your email before the `@`; change it in **Admin → Account**). Login accepts the username **or** the email.
+- `listeners.deleted_at` — a listener who already has bookings can't be hard-deleted (foreign key), so they are hidden everywhere instead; one with no bookings is removed completely.
+- Writes the homepage title/description, the About title and the top banner's heading ("A Safe Space to Be Heard") once. After that, **Admin → SEO** and **Admin → Banners** own them.
+
+What changed, in short:
+
+- **Homepage SEO** — title, description, single `<h1>`, and `<link rel="canonical" href="https://dukhdealer.online/" />` are rendered on `/`. Every other page now has its own title, description, canonical and Open Graph tags (previously they all shared the homepage's Open Graph title).
+- **Header logo** — the whole logo links to `https://dukhdealer.online/`.
+- **Admin → SEO / Settings** — saves are partial-safe and show errors; the unused "Canonical base URL" and "FAQ" SEO controls were removed (canonicals always use `https://dukhdealer.online`); blog posts have SEO title/description/canonical fields.
+- **Admin → Account** — change username and password (current password required, new password confirmed, stored as a PBKDF2 hash, other sessions signed out).
+- **Listeners** — add/edit/delete/photo upload fixed; listeners now appear on the homepage ("Meet the listeners"), on a new `/listeners` page, and with photos in the booking flow. Deleting in the admin removes them from the public site.
+- **Media URLs** — `/api/media/<folder>/<file>` (catch-all route); older `%2F` URLs still work.
+- **Technical SEO** — sitemap includes `/listeners`; `X-Robots-Tag: noindex` on `/admin`; `/track` and booking pages are noindex.
+
+---
+
 ## Product
 
 Customers book private sessions:
